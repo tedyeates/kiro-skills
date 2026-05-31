@@ -47,8 +47,7 @@ The complete workflow from idea to shipped code:
 │  2. prototype          → Throwaway code to answer design Qs    │
 │  3. to-prd             → Synthesize into PRD                   │
 │  4. to-issues          → Break into parallel-ready tasks       │
-│  5. wave-runner.py      → Execute tasks in parallel waves       │
-│     └─ tdd             → Red-green-refactor per task           │
+│  5. tdd                → Red-green-refactor per task           │
 │  6. diagnose           → Fix bugs that arise                   │
 │  7. improve-arch       → Refactor after each wave              │
 ├─────────────────────────────────────────────────────────────────┤
@@ -92,29 +91,12 @@ See [docs/process-flow.md](docs/process-flow.md) for the detailed step-by-step g
 |-------|-------------|
 | [convert-claude-skill](skills/convert-claude-skill/SKILL.md) | Convert any Claude Code skill into its Kiro equivalent |
 
-## Wave Runner (Parallel Execution)
-
-The `scripts/wave-runner.py` script coordinates parallel task execution:
-
-```bash
-# Dry run — see wave decomposition
-python scripts/wave-runner.py tasks.md --dry-run
-
-# Execute with default implementer agent
-python scripts/wave-runner.py tasks.md
-
-# Custom agent and parallelism
-python scripts/wave-runner.py tasks.md --agent my-agent --max-parallel 6
-```
-
-Tasks must be formatted with `## Task N: Title` headers and include `**Wave**`, `**Blocked by**`, and `**Type**` metadata. The `to-issues` skill produces this format automatically.
-
 ## Agents
 
 | Agent | Purpose |
 |-------|---------|
 | [skill-converter](agents/skill-converter.json) | Convert Claude skills to Kiro format |
-| [implementer](agents/implementer.json) | Constrained agent for headless task execution via wave-runner |
+| [implementer](agents/implementer.json) | Constrained agent for headless task execution via subagent pipelines |
 
 ## Steering Files
 
