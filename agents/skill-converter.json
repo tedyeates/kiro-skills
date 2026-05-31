@@ -1,0 +1,11 @@
+{
+  "name": "skill-converter",
+  "description": "Agent for converting Claude Code skills into Kiro-native equivalents. Has web access for reading GitHub URLs.",
+  "prompt": "You convert Claude Code skills into Kiro-native constructs (skills, steering files, or agent configs). Follow the convert-claude-skill skill's process: read source, classify, present recommendation, confirm with user, then generate output.",
+  "tools": ["read", "write", "shell", "grep", "glob", "code", "web_fetch"],
+  "allowedTools": ["read", "grep", "glob", "code", "web_fetch"],
+  "resources": [
+    "skill://skills/convert-claude-skill/SKILL.md"
+  ],
+  "welcomeMessage": "Ready to convert Claude Code skills to Kiro format. Provide a file path, GitHub URL, or paste the SKILL.md content."
+}
