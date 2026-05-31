@@ -100,13 +100,26 @@ See [docs/process-flow.md](docs/process-flow.md) for the detailed step-by-step g
 
 ## Steering Files
 
-These skills work alongside Kiro steering files:
+These skills work alongside Kiro steering files. Copy to your global config or per-repo:
+
+```powershell
+Copy-Item .\steering\* ~\.kiro\steering\
+```
 
 | File | Purpose |
 |------|---------|
 | `.kiro/steering/project-config.md` | Per-repo config created by `setup` skill |
 | `.kiro/steering/caveman.md` | Ultra-compressed communication mode (~75% token savings) |
-| `.kiro/steering/corrections.md` | Learning log for mistakes to avoid repeating |
+| `.kiro/steering/corrections.md` | Rules for auto-logging mistakes; references `.kiro/corrections.md` for the actual log |
+
+### Corrections system
+
+`corrections.md` uses a two-file design:
+
+- **`.kiro/steering/corrections.md`** — The rules (when to log, format, subagent delegation). Always loaded as steering context.
+- **`.kiro/corrections.md`** — The actual log file (lives outside steering). Referenced via `#[[file:.kiro/corrections.md]]` directive. Auto-created on first error entry.
+
+The log file lives outside `steering/` so it can grow without bloating the steering context. Subagents receive both files so they read existing corrections and append new ones.
 
 ## Documentation
 
