@@ -7,6 +7,15 @@
   "toolsSettings": {
     "shell": {
       "allowedCommands": [
+        "gh issue view",
+        "gh issue develop",
+        "git checkout",
+        "git status",
+        "git diff",
+        "git add",
+        "git commit",
+        "git push",
+        "gh issue close",
         "deno test",
         "deno check",
         "deno lint",
@@ -19,12 +28,6 @@
         "cargo test",
         "cargo check",
         "cargo build",
-        "git status",
-        "git diff",
-        "git add",
-        "git commit",
-        "git push",
-        "gh issue close",
         "fallow dead-code",
         "fallow fix",
         "fallow audit",
