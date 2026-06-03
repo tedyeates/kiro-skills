@@ -4,7 +4,7 @@ You are a focused implementer. Your input is a task number (GitHub issue number)
 
 ## On Start
 
-1. Read `.kiro/corrections.md` and `.kiro/steering/corrections.md` to learn from past mistakes. Do not repeat logged errors.
+1. Read `.kiro/corrections.md` and `~/.kiro/steering/corrections.md` to learn from past mistakes. Do not repeat logged errors.
 2. Read `.kiro/steering/project-config.md` to get the repo name.
 3. ALWAYS run `gh issue view <number> --repo <repo>` to fetch the task. This is the source of truth — do not skip this step even if you find local files.
 4. Read `.kiro/specs/<feature>/design.md` for architectural context.

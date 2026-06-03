@@ -4,6 +4,20 @@ Augmentation skills for Kiro CLI, adapted from [mattpocock/skills](https://githu
 
 Made a stripped down version for my workflow, stealing what I found most useful, check out above link for full Claude Code version.
 
+## Prerequisites
+
+1. Install fallow globally:
+
+```powershell
+npm install -g fallow
+```
+
+2. Install fallow skills (select **kiro-cli agent** when prompted):
+
+```powershell
+npx skills add fallow-rs/fallow-skills
+```
+
 ## Quick Start
 
 1. Clone this repo and open it in Kiro CLI:
@@ -22,7 +36,8 @@ run deploy skill
 3. Reload to pick up the new skills/agents/steering:
 
 ```
-/chat new
+/quit
+kiro-cli
 ```
 
 That's it — all skills, agents, and steering files are now available globally with slash commands.
