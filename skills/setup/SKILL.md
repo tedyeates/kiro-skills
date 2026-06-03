@@ -8,6 +8,23 @@ Scaffold the per-repo configuration that the engineering skills assume. Run once
 
 ## Process
 
+### 0. Prerequisites
+
+Check if `fallow` is on PATH:
+
+```bash
+fallow --version
+```
+
+- If found, skip installation.
+- If not found, run:
+
+```bash
+npm install -g fallow
+```
+
+Verify installation succeeded with `fallow --version`.
+
 ### 1. Explore
 
 Read the current repo to understand its starting state:
@@ -47,14 +64,11 @@ Default: infer from `git remote` (GitHub remote → GitHub, GitLab remote → Gi
 
 **Section B — Triage labels** (skip if not using triage skill)
 
-> The five canonical triage roles and their label strings in your tracker.
+> The triage roles and their label strings in your tracker.
 
 Defaults:
-- `needs-triage`
-- `needs-info`
 - `ready-for-agent`
 - `ready-for-human`
-- `wontfix`
 
 Ask if the user wants to override any.
 
