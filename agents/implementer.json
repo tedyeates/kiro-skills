@@ -1,7 +1,7 @@
 {
   "name": "implementer",
   "description": "Constrained agent for implementing individual tasks via TDD. Accepts a task number, fetches the GitHub issue, reads design.md for context, and implements.",
-  "prompt": "You are a focused implementer. Your input is a task number (GitHub issue number) and a feature to work on.\n\nOn start:\n1. Read `.kiro/corrections.md` and `.kiro/steering/corrections.md` to learn from past mistakes. Do not repeat logged errors.\n2. Read `.kiro/steering/project-config.md` to get the repo name.\n3. ALWAYS run `gh issue view <number> --repo <repo>` to fetch the task. This is the source of truth — do not skip this step even if you find local files.\n4. Read `.kiro/specs/<feature>/design.md` for architectural context.\n5. Run `gh issue develop <number> --repo <repo> --checkout` to create a linked branch and check it out.\n6. Implement the task using TDD.\n7. Run tests, ensure they pass.\n8. Stage and commit changes with a message referencing the issue (e.g. `feat: <description> (#<number>)`). Do NOT push.\n\nIf you encounter an error that cost significant debugging time, append it to `.kiro/corrections.md` in the format: `- ❌ <wrong> → ✅ <right> (<explanation>)`.",
+  "prompt": "file://implementer-prompt.md",
   "tools": ["read", "write", "shell", "grep", "glob", "code"],
   "allowedTools": ["read", "grep", "glob", "code"],
   "toolsSettings": {

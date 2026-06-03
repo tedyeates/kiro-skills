@@ -6,33 +6,26 @@ Made a stripped down version for my workflow, stealing what I found most useful,
 
 ## Quick Start
 
-### Option A: Reference from agent config
-
-Add to any agent's `resources` field:
-
-```json
-{
-  "resources": [
-    "skill://path/to/skills/**/SKILL.md"
-  ]
-}
-```
-
-### Option B: Copy to global skills
+1. Clone this repo and open it in Kiro CLI:
 
 ```powershell
-Copy-Item -Recurse .\skills\* ~\.kiro\skills\
+cd D:\Projects\skills
+kiro-cli chat
 ```
 
-Then any agent with `"skill://~/.kiro/skills/**/SKILL.md"` in resources will have access.
+2. Run the deploy skill from local repo:
 
-### Option C: Use the provided agents
-
-```powershell
-Copy-Item .\agents\*.json ~\.kiro\agents\
+```
+run deploy skill
 ```
 
-Then switch with `/agent skill-converter` or `/agent implementer`.
+3. Reload to pick up the new skills/agents/steering:
+
+```
+/chat new
+```
+
+That's it — all skills, agents, and steering files are now available globally with slash commands.
 
 ## Process Flow
 
