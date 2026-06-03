@@ -8,7 +8,6 @@
     "shell": {
       "allowedCommands": [
         "gh issue view",
-        "gh issue develop",
         "git checkout",
         "git status",
         "git diff",
