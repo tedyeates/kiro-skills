@@ -97,6 +97,7 @@ See [docs/process-flow.md](docs/process-flow.md) for the detailed step-by-step g
 |-------|---------|
 | [skill-converter](agents/skill-converter.json) | Convert Claude skills to Kiro format |
 | [implementer](agents/implementer.json) | Constrained agent for headless task execution via subagent pipelines |
+| [reviewer](agents/reviewer.json) | Quality gate: type check, test, dead-code analysis, auto-fix |
 
 ### Running the Implementer
 
@@ -119,6 +120,43 @@ The agent will:
 2. Run `gh issue view <number>` to fetch task details
 3. Read `.kiro/specs/*/design.md` for architectural context
 4. Implement via TDD (red → green → refactor)
+
+### Running the Reviewer
+
+The reviewer agent is a quality gate that runs after the implementer. It checks type safety, runs tests, performs dead-code analysis (JS/TS only via fallow), and auto-fixes mechanical issues.
+
+**Prerequisites:**
+- Same as implementer (gh CLI, project-config.md)
+- `fallow` CLI installed globally (`npm install -g fallow`) — only needed for JS/TS projects
+
+**Usage:**
+
+```powershell
+# Run reviewer on a branch after implementer finishes
+kiro-cli chat --no-interactive --trust-all-tools --agent reviewer "Review issue #12"
+```
+
+**What it does:**
+1. Reads `corrections.md` to avoid known mistakes
+2. Runs type checking, tests, and `fallow dead-code` (if JS/TS)
+3. Fixes mechanical issues (type errors, test failures, dead code) — up to 3 attempts
+4. On success: commits fixes, pushes, closes the issue
+5. On failure: reports what passed/failed and what was attempted
+
+**Fix boundary — reviewer will fix:**
+- Type errors
+- Test failures
+- Dead code (unused exports, files, dependencies)
+
+**Combining with implementer in a pipeline:**
+
+```powershell
+# Implementer → Reviewer pipeline via subagent
+kiro-cli chat --no-interactive --trust-all-tools "Implement issue #12 for feature X, then review it" \
+  --agent implementer --then --agent reviewer
+```
+
+Or use the subagent `stages` approach in your own agent to wire them together with a `loop_to` for the review cycle.
 
 ## Steering Files
 
