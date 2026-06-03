@@ -113,7 +113,7 @@ The implementer agent accepts a GitHub issue number, fetches the ticket details,
 ```powershell
 # Run a single task by issue number
 kiro-cli chat --no-interactive --trust-all-tools --agent implementer "Implement issue #12 for feature reviewer-agent"
-
+```
 
 The agent will:
 1. Read `project-config.md` for the repo name
