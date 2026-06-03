@@ -15,6 +15,7 @@
         "git commit",
         "git push",
         "gh issue close",
+        "gh pr create",
         "deno test",
         "deno check",
         "deno lint",
@@ -39,7 +40,7 @@
   "resources": [
     "skill://~/.kiro/skills/fallow/SKILL.md",
     "skill://~/.kiro/skills/diagnose/SKILL.md",
-    "file://.kiro/steering/corrections.md",
+    "file://~/.kiro/steering/corrections.md",
     "file://.kiro/corrections.md"
   ]
 }

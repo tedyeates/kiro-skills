@@ -22,7 +22,7 @@ run deploy skill
 3. Reload to pick up the new skills/agents/steering:
 
 ```
-/chat reload
+/chat new
 ```
 
 That's it — all skills, agents, and steering files are now available globally with slash commands.

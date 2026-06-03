@@ -27,8 +27,9 @@ Output format:
 On success:
 1. Stage and commit any fixes with message `fix: reviewer fixes (#<issue>)`.
 2. Push the branch with `git push`.
-3. Close the issue with `gh issue close <number> --repo <repo>`.
-4. Report:
+3. Create a PR with `gh pr create --repo <repo> --title "<concise title>" --body "Closes #<issue>" --fill`.
+4. Close the issue with `gh issue close <number> --repo <repo>`.
+5. Report:
 ```
 REVIEW PASSED
 - [x] Type checking passed

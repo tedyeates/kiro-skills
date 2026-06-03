@@ -12,7 +12,28 @@ Use the vocabulary defined in [LANGUAGE.md](LANGUAGE.md) consistently.
 
 ### 1. Explore
 
-Read the project's domain glossary and any ADRs first. Then walk the codebase organically, noting friction:
+Read the project's domain glossary and any ADRs first.
+
+#### Data gathering with fallow (JS/TS projects only)
+
+> Skip this section if the project has no JavaScript or TypeScript files.
+
+Run these commands first to ground exploration in data:
+
+```sh
+fallow health --format json --quiet --hotspots
+fallow dupes --format json --quiet
+fallow dead-code --format json --quiet --circular-deps
+```
+
+Interpret results through the deep-module lens:
+- **Hotspots** → likely shallow modules with high churn and many dependents
+- **Duplicates** → candidates for deepening behind a shared interface
+- **Dead code / circular deps** → symptoms of leaky seams and poor locality
+
+#### Organic exploration
+
+Then walk the codebase organically, noting friction:
 
 - Where does understanding one concept require bouncing between many small modules?
 - Where are modules **shallow** — interface nearly as complex as the implementation?
