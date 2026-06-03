@@ -14,7 +14,7 @@ Detect the OS and run the appropriate commands:
 
 ```powershell
 Copy-Item -Recurse -Force .\skills\* ~\.kiro\skills\
-Copy-Item -Force .\agents\*.json ~\.kiro\agents\
+Copy-Item -Force .\agents\* ~\.kiro\agents\
 Copy-Item -Force .\steering\* ~\.kiro\steering\
 ```
 
