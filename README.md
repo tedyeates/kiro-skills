@@ -98,6 +98,28 @@ See [docs/process-flow.md](docs/process-flow.md) for the detailed step-by-step g
 | [skill-converter](agents/skill-converter.json) | Convert Claude skills to Kiro format |
 | [implementer](agents/implementer.json) | Constrained agent for headless task execution via subagent pipelines |
 
+### Running the Implementer
+
+The implementer agent accepts a GitHub issue number, fetches the ticket details, reads the relevant `design.md` for context, and implements the task using TDD.
+
+**Prerequisites:**
+- `gh` CLI authenticated (`gh auth status`)
+- `.kiro/steering/project-config.md` with repo configured (created by `setup` skill)
+- A `design.md` in `.kiro/specs/<feature>/design.md`
+
+**Usage:**
+
+```powershell
+# Run a single task by issue number
+kiro-cli chat --no-interactive --trust-all-tools --agent implementer "Implement issue #12 for feature reviewer-agent"
+
+
+The agent will:
+1. Read `project-config.md` for the repo name
+2. Run `gh issue view <number>` to fetch task details
+3. Read `.kiro/specs/*/design.md` for architectural context
+4. Implement via TDD (red → green → refactor)
+
 ## Steering Files
 
 These skills work alongside Kiro steering files. Copy to your global config or per-repo:

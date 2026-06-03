@@ -115,40 +115,21 @@ What happens:
 
 ---
 
-## Step 5: Wave Runner (parallel execution)
+## Step 5: TDD (implementation)
 
-**Tool**: `scripts/wave-runner.py`
+**Skill**: `tdd`
+**Trigger**: "use tdd" / "implement this with tests"
 **Kiro phase**: Implementation
 
 What happens:
-1. Script parses the task list from Step 4
-2. Validates dependencies (no task can depend on a same/later wave task)
-3. For each wave, spawns parallel Kiro CLI sessions (one per AFK task)
-4. Each session uses the `implementer` agent with TDD discipline
-5. On wave completion, marks successful tasks `[x]` in the tasks file
-6. Stops on failure or when HITL tasks block the next wave
-7. On re-run, skips already-completed `[x]` tasks
+1. Pick a task from the wave breakdown (Step 4)
+2. Write ONE failing test (red)
+3. Write minimal code to pass it (green)
+4. Refactor if needed
+5. Repeat until acceptance criteria met
+6. Move to next task
 
-```bash
-# See the wave decomposition
-python scripts/wave-runner.py tasks.md --dry-run
-
-# Execute with defaults
-python scripts/wave-runner.py tasks.md
-
-# Custom settings
-python scripts/wave-runner.py tasks.md --agent my-agent --max-parallel 6
-```
-
-**HITL tasks**: Skipped during execution. If a future task depends on a HITL task, the script stops after the current wave and tells you which HITL tasks to complete. Mark them done manually (`## [x] Task N:`) and re-run.
-
-**Logs**: Each sub-agent's full output is written to `.wave-runner/task-N.log`.
-
-**Within each task**, the `tdd` skill drives implementation:
-1. Write ONE failing test (red)
-2. Write minimal code to pass it (green)
-3. Refactor if needed
-4. Repeat until acceptance criteria met
+**Key discipline**: One test at a time, vertical slices only. Never write multiple tests before making them pass.
 
 ---
 
@@ -224,7 +205,7 @@ You: "I want to add real-time notifications to the app"
      → prototype (if unsure about WebSocket vs SSE state model)
      → to-prd (synthesizes into structured design)
      → to-issues (breaks into parallel tasks)
-     → wave-runner (executes tasks with TDD)
+     → tdd (implement each task test-first)
      → improve-architecture (clean up after)
 ```
 
