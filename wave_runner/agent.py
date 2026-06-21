@@ -35,7 +35,7 @@ def invoke_agent(
     """
     cmd = [
         "kiro-cli", "chat",
-        "--no-interactive", "--trust-all-tools",
+        "--no-interactive",
         "--agent", name,
         prompt,
     ]
