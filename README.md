@@ -148,7 +148,7 @@ kiro-cli chat --no-interactive --trust-all-tools --agent reviewer "Review issue 
 1. Reads `corrections.md` to avoid known mistakes
 2. Runs type checking, tests, and `fallow dead-code` (if JS/TS)
 3. Fixes mechanical issues (type errors, test failures, dead code) — up to 3 attempts
-4. On success: commits fixes, pushes, closes the issue
+4. On success: commits fixes and reports AGENT_RESULT
 5. On failure: reports what passed/failed and what was attempted
 
 **Fix boundary — reviewer will fix:**
