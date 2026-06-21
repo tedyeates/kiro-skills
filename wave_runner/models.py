@@ -27,3 +27,12 @@ class PlannedTask:
     """A task eligible for the current wave, with its pipeline entry point."""
     task: Task
     stage: PipelineStage
+
+
+@dataclass
+class TaskResult:
+    """Outcome of a single task in the pipeline."""
+    number: int
+    success: bool
+    branch: str
+    stdout: str = ""
