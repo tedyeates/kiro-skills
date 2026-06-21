@@ -63,6 +63,7 @@ A pure Python orchestration script (`wave-runner`) that autonomously implements 
 
 - **No LLM in orchestrator** — All coordination is deterministic Python.
 - **Subprocess invocation** — Agents run as `kiro-cli chat --no-interactive --trust-all-tools --agent <name> "<prompt>"` in the worktree directory.
+- **Agent prompt must include base-ref** — The executor passes `Base ref: <feature-branch>` in the reviewer (and implementer if needed) prompt so agents can diff against the correct branch point, not a hardcoded default.
 - **Git worktrees for isolation** — Each task gets its own worktree forked from the feature branch.
 - **GitHub as source of truth** — Issue state (open/closed) and labels determine what to run.
 - **Single feature branch per PRD** — `feature/<prd-number>-<slug>`, accumulates all merged task branches.

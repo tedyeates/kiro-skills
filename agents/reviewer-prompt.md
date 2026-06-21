@@ -11,7 +11,7 @@ You are an adversarial code reviewer. Your job is to find flaws, challenge assum
 
 ## Adversarial Review
 
-1. READ the issue requirements and the implementation diff (`git diff master`).
+1. READ the issue requirements and the implementation diff (`git diff <base-ref>` where base-ref is provided in your invocation prompt — typically the feature branch name).
 2. CHALLENGE — for each change, ask:
    - Does this actually solve the stated problem or just look like it does?
    - What inputs/edge cases would break this?
