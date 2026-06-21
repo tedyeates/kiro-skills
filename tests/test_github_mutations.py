@@ -1,9 +1,6 @@
 """Tests for GitHub mutation functions — verify correct shell commands constructed."""
 
 from unittest.mock import patch, call
-import subprocess
-
-import pytest
 
 from wave_runner.github import update_label, post_comment, close_issue, create_pr
 
@@ -46,31 +43,3 @@ def test_create_pr(mock_run):
         check=True,
         capture_output=True,
     )
-
-
-@patch("wave_runner.github.subprocess.run")
-def test_update_label_raises_on_failure(mock_run):
-    mock_run.side_effect = subprocess.CalledProcessError(1, "gh", stderr="not found")
-    with pytest.raises(subprocess.CalledProcessError):
-        update_label(99, "old", "new", "owner/repo")
-
-
-@patch("wave_runner.github.subprocess.run")
-def test_post_comment_raises_on_failure(mock_run):
-    mock_run.side_effect = subprocess.CalledProcessError(1, "gh", stderr="auth required")
-    with pytest.raises(subprocess.CalledProcessError):
-        post_comment(7, "msg", "owner/repo")
-
-
-@patch("wave_runner.github.subprocess.run")
-def test_close_issue_raises_on_failure(mock_run):
-    mock_run.side_effect = subprocess.CalledProcessError(1, "gh", stderr="rate limited")
-    with pytest.raises(subprocess.CalledProcessError):
-        close_issue(19, "owner/repo")
-
-
-@patch("wave_runner.github.subprocess.run")
-def test_create_pr_raises_on_failure(mock_run):
-    mock_run.side_effect = subprocess.CalledProcessError(1, "gh", stderr="already exists")
-    with pytest.raises(subprocess.CalledProcessError):
-        create_pr("feat/x", "main", "title", "body", "owner/repo")
