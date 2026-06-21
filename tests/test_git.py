@@ -110,3 +110,30 @@ class TestPushBranch:
             capture_output=True,
             text=True,
         )
+
+
+class TestErrorPaths:
+    def test_create_feature_branch_raises_on_failure(self, mock_run):
+        mock_run.side_effect = subprocess.CalledProcessError(1, "git", stderr="already exists")
+        with pytest.raises(subprocess.CalledProcessError):
+            create_feature_branch("feature/x", "main")
+
+    def test_create_worktree_raises_on_failure(self, mock_run):
+        mock_run.side_effect = subprocess.CalledProcessError(1, "git", stderr="path exists")
+        with pytest.raises(subprocess.CalledProcessError):
+            create_worktree("task/1", "/tmp/wt", "main")
+
+    def test_remove_worktree_raises_on_failure(self, mock_run):
+        mock_run.side_effect = subprocess.CalledProcessError(1, "git", stderr="not a worktree")
+        with pytest.raises(subprocess.CalledProcessError):
+            remove_worktree("/tmp/wt")
+
+    def test_revert_merge_raises_on_failure(self, mock_run):
+        mock_run.side_effect = subprocess.CalledProcessError(1, "git", stderr="fatal")
+        with pytest.raises(subprocess.CalledProcessError):
+            revert_merge("/tmp/dir")
+
+    def test_push_branch_raises_on_failure(self, mock_run):
+        mock_run.side_effect = subprocess.CalledProcessError(1, "git", stderr="auth failed")
+        with pytest.raises(subprocess.CalledProcessError):
+            push_branch("feature/x")

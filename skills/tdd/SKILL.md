@@ -78,7 +78,22 @@ Rules:
 - Don't anticipate future tests
 - Keep tests focused on observable behavior
 
-### 4. Refactor
+### 4. Error Paths
+
+After happy path behaviors are covered, add tests for failure modes:
+
+- What happens when dependencies fail? (network errors, auth failures, timeouts)
+- What happens with invalid input? (empty, null, malformed)
+- Does the error propagate correctly or get swallowed silently?
+
+Every function that calls an external system (subprocess, HTTP, DB) needs at least one failure test. This is not optional — missing error path tests cause silent production failures.
+
+```
+RED:   "subprocess fails → CalledProcessError propagates"
+GREEN: (already passes if using check=True — confirms contract)
+```
+
+### 5. Refactor
 
 After all tests pass:
 - [ ] Extract duplication
@@ -94,6 +109,7 @@ After all tests pass:
 [ ] Test describes behavior, not implementation
 [ ] Test uses public interface only
 [ ] Test would survive internal refactor
+[ ] Error paths tested for any external call (subprocess, HTTP, DB)
 [ ] Code is minimal for this test
 [ ] No speculative features added
 ```

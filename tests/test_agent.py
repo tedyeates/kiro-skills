@@ -33,7 +33,7 @@ class TestInvokeAgent:
         mock_run.assert_called_once_with(
             [
                 "kiro-cli", "chat",
-                "--no-interactive", "--trust-all-tools",
+                "--no-interactive",
                 "--agent", "implementer",
                 "do the thing",
             ],
@@ -88,7 +88,7 @@ class TestInvokeAgent:
         mock_run.assert_called_once_with(
             [
                 "kiro-cli", "chat",
-                "--no-interactive", "--trust-all-tools",
+                "--no-interactive",
                 "--agent", "implementer",
                 "do it",
             ],
