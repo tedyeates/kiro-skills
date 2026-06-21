@@ -55,6 +55,40 @@ git merge task/<number>-<slug> --no-edit
 # If success → remove worktree, delete branch
 ```
 
+### Merge process (observed)
+
+Merged #16 → #17 → #18 → #19 sequentially into `feature/wave-runner`.
+
+**What happened:**
+- #16, #17, #19: clean merges, tests pass immediately
+- #18: conflict in `pyproject.toml` (both #16 and #18 created it independently)
+
+**Conflict resolution pattern:**
+1. `git merge task/<branch> --no-edit` → detects conflict
+2. Read `git diff` to see conflict markers
+3. Resolve (keep correct version — in this case HEAD had the standard `build_meta` backend and `>=3.11`)
+4. `git add <resolved-files>` + `git commit --no-edit`
+5. Run tests to confirm
+
+**Key insight:** Conflicts from parallel implementation are typically in shared config files (`pyproject.toml`, `__init__.py`) where both branches create the same file. The merger agent should handle these easily — they're additive, not semantic conflicts.
+
+**Cleanup:**
+```bash
+git worktree remove <path> --force  # may fail if OS has lock (antivirus, terminal cwd)
+git worktree prune
+git branch -D task/<number>-<slug>
+```
+
+**Windows gotcha:** `git worktree remove` fails with "Permission denied" if any process has the directory as cwd or an indexer holds a file lock. The executor should handle this gracefully (retry after delay, or leave for manual cleanup).
+
+### --trust-all-tools not needed
+
+Agent configs now have `write` and `shell` in `allowedTools`. Combined with `denyByDefault: true` on shell, the agent can write files and run allowed commands without any trust flag. The invocation is simply:
+
+```python
+subprocess.run(["kiro-cli", "chat", "--no-interactive", "--agent", name, prompt], cwd=worktree_path)
+```
+
 ## Critical Learnings for Executor
 
 ### Agent prompt must include base-ref
