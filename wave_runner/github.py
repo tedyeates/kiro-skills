@@ -1,6 +1,51 @@
-"""GitHub CLI mutations for issue and PR management."""
+"""GitHub CLI interactions for issue and PR management."""
 
+import json
+import re
 import subprocess
+
+
+def fetch_prd(number: int, repo: str) -> dict:
+    """Fetch PRD issue details. Returns dict with title, body, design_path."""
+    result = subprocess.run(
+        ["gh", "api", f"repos/{repo}/issues/{number}", "--jq", "{title: .title, body: .body}"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    data = json.loads(result.stdout)
+    match = re.search(r"^Design:\s*(.+)$", data["body"] or "", re.MULTILINE)
+    data["design_path"] = match.group(1).strip() if match else None
+    return data
+
+
+def fetch_sub_issues(prd_number: int, repo: str) -> list[dict]:
+    """Fetch all sub-issues of a PRD with their blockers."""
+    result = subprocess.run(
+        ["gh", "api", f"repos/{repo}/issues/{prd_number}/sub_issues?per_page=100"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    issues = json.loads(result.stdout)
+    tasks = []
+    for issue in issues:
+        blockers_result = subprocess.run(
+            ["gh", "api", f"repos/{repo}/issues/{issue['number']}/dependencies/blocked_by"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        blockers = json.loads(blockers_result.stdout)
+        tasks.append({
+            "id": issue["id"],
+            "number": issue["number"],
+            "title": issue["title"],
+            "state": issue["state"],
+            "labels": [l["name"] for l in issue.get("labels", [])],
+            "blockers": [b["number"] for b in blockers],
+        })
+    return tasks
 
 
 def update_label(number: int, old: str, new: str, repo: str) -> None:
