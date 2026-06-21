@@ -7,15 +7,11 @@
   "toolsSettings": {
     "shell": {
       "allowedCommands": [
-        "gh issue view",
-        "git checkout",
+        "gh issue view.*",
         "git status",
-        "git diff",
-        "git add",
-        "git commit",
-        "git push",
-        "gh issue close",
-        "gh pr create",
+        "git diff.*",
+        "git add.*",
+        "git commit.*",
         "deno test",
         "deno check",
         "deno lint",
@@ -28,13 +24,16 @@
         "cargo test",
         "cargo check",
         "cargo build",
-        "fallow dead-code",
-        "fallow fix",
-        "fallow audit",
-        "fallow health",
-        "fallow dupes"
+        "pytest",
+        "python -m pytest",
+        "fallow dead-code.*",
+        "fallow fix.*",
+        "fallow audit.*",
+        "fallow health.*",
+        "fallow dupes.*"
       ],
-      "autoAllowReadonly": true
+      "autoAllowReadonly": true,
+      "denyByDefault": true
     }
   },
   "resources": [

@@ -7,11 +7,11 @@
   "toolsSettings": {
     "shell": {
       "allowedCommands": [
-        "gh issue view",
-        "gh issue develop",
-        "git checkout",
-        "git add",
-        "git commit",
+        "gh issue view.*",
+        "git add.*",
+        "git commit.*",
+        "git status",
+        "git diff.*",
         "deno test",
         "deno check",
         "deno lint",
@@ -24,10 +24,11 @@
         "cargo test",
         "cargo check",
         "cargo build",
-        "git status",
-        "git diff"
+        "pytest",
+        "python -m pytest"
       ],
-      "autoAllowReadonly": true
+      "autoAllowReadonly": true,
+      "denyByDefault": true
     }
   },
   "resources": [
