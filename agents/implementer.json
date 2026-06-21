@@ -24,8 +24,8 @@
         "cargo test",
         "cargo check",
         "cargo build",
-        "pytest",
-        "python -m pytest"
+        "pytest.*",
+        "python -m pytest.*"
       ],
       "autoAllowReadonly": true,
       "denyByDefault": true

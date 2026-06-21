@@ -20,8 +20,8 @@
         "npm run build",
         "cargo test",
         "cargo check",
-        "pytest",
-        "python -m pytest"
+        "pytest.*",
+        "python -m pytest.*"
       ],
       "autoAllowReadonly": true,
       "denyByDefault": true
