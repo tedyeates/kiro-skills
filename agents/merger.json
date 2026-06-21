@@ -1,0 +1,34 @@
+{
+  "name": "merger",
+  "description": "Surgical merge-conflict resolver. Invoked when git merge produces conflicts or tests fail after merge. Fixes minimally and signals result.",
+  "prompt": "file://merger-prompt.md",
+  "tools": ["read", "write", "shell", "grep", "glob", "code"],
+  "allowedTools": ["read", "grep", "glob", "code"],
+  "toolsSettings": {
+    "shell": {
+      "allowedCommands": [
+        "gh issue view.*",
+        "git status",
+        "git diff.*",
+        "git add.*",
+        "git commit.*",
+        "deno test",
+        "deno check",
+        "pnpm test",
+        "pnpm build",
+        "npm test",
+        "npm run build",
+        "cargo test",
+        "cargo check",
+        "pytest",
+        "python -m pytest"
+      ],
+      "autoAllowReadonly": true,
+      "denyByDefault": true
+    }
+  },
+  "resources": [
+    "file://~/.kiro/steering/corrections.md",
+    "file://.kiro/corrections.md"
+  ]
+}
