@@ -23,3 +23,22 @@ Says "run the project's test command" but doesn't explain discovery. Other agent
 ## Status
 
 - [ ] Revisit after #13 (config module) and #20 (executor) are implemented
+
+## Future Work
+
+### Use agent hooks for deterministic steps (testing, linting)
+
+Instead of having agents spend tokens running `pytest` or `cargo test` themselves, use `postToolUse` or `stop` hooks to run tests automatically. The hook output is injected into context at near-zero token cost vs the agent deciding to run tests, reading output, and reasoning about it.
+
+Example:
+```json
+"hooks": {
+  "stop": [{ "command": "python -m pytest tests/ --tb=short -q" }]
+}
+```
+
+Benefits:
+- Tests always run (agent can't forget)
+- No tokens spent on "let me run the tests" reasoning
+- Hook output is concise and structured
+- Orchestrator can also read hook exit code for pass/fail without parsing agent output
