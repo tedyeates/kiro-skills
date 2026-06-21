@@ -79,6 +79,14 @@ if result.returncode != 0:
     # Label impl-failed, don't proceed to reviewer
 ```
 
+### cwd MUST be enforced at OS level
+
+The kiro-cli `subagent` tool has no `cwd` parameter — agents run in the parent's working directory. "Working directory: X" in the prompt is a hint the LLM may ignore. The executor MUST use `cwd=worktree_path` on the subprocess call to enforce isolation. Without this, agents can read/write files in the wrong worktree or the main repo.
+
+```python
+subprocess.run([...], cwd=worktree_path)  # non-negotiable
+```
+
 ### Branch cleanup on success
 
 After successful merge, the orchestrator (not LLM) should:
