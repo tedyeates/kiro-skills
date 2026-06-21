@@ -3,7 +3,7 @@
   "description": "Constrained agent for implementing individual tasks via TDD. Accepts a task number, fetches the GitHub issue, reads design.md for context, and implements.",
   "prompt": "file://implementer-prompt.md",
   "tools": ["read", "write", "shell", "grep", "glob", "code"],
-  "allowedTools": ["read", "grep", "glob", "code"],
+  "allowedTools": ["read", "write", "shell", "grep", "glob", "code"],
   "toolsSettings": {
     "shell": {
       "allowedCommands": [

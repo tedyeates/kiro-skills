@@ -3,7 +3,7 @@
   "description": "Terminal-stage agent that reviews implementer output. Runs type checking, tests, and fallow dead-code analysis. Fixes mechanical issues (up to 3 attempts) and reports pass/fail.",
   "prompt": "file://reviewer-prompt.md",
   "tools": ["read", "write", "shell", "grep", "glob", "code"],
-  "allowedTools": ["read", "grep", "glob", "code"],
+  "allowedTools": ["read", "write", "shell", "grep", "glob", "code"],
   "toolsSettings": {
     "shell": {
       "allowedCommands": [

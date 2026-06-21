@@ -3,7 +3,7 @@
   "description": "Surgical merge-conflict resolver. Invoked when git merge produces conflicts or tests fail after merge. Fixes minimally and signals result.",
   "prompt": "file://merger-prompt.md",
   "tools": ["read", "write", "shell", "grep", "glob", "code"],
-  "allowedTools": ["read", "grep", "glob", "code"],
+  "allowedTools": ["read", "write", "shell", "grep", "glob", "code"],
   "toolsSettings": {
     "shell": {
       "allowedCommands": [
