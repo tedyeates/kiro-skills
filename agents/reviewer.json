@@ -1,13 +1,12 @@
 {
   "name": "reviewer",
-  "description": "Terminal-stage agent that reviews implementer output. Runs type checking, tests, and fallow dead-code analysis. Fixes mechanical issues (up to 3 attempts) and reports pass/fail.",
+  "description": "Adversarial code reviewer. Receives pre-computed diff, test results, and fallow output from orchestrator. Fixes mechanical issues and reports findings.",
   "prompt": "file://reviewer-prompt.md",
   "tools": ["read", "write", "shell", "grep", "glob", "code"],
   "allowedTools": ["read", "write", "shell", "grep", "glob", "code"],
   "toolsSettings": {
     "shell": {
       "allowedCommands": [
-        "gh issue view.*",
         "git status",
         "git diff.*",
         "git add.*",
@@ -15,22 +14,15 @@
         "deno test",
         "deno check",
         "deno lint",
-        "deno fmt",
         "pnpm test",
         "pnpm build",
-        "pnpm lint",
         "npm test",
         "npm run build",
         "cargo test",
         "cargo check",
-        "cargo build",
         "pytest.*",
         "python -m pytest.*",
-        "fallow dead-code.*",
-        "fallow fix.*",
-        "fallow audit.*",
-        "fallow health.*",
-        "fallow dupes.*"
+        "fallow fix.*"
       ],
       "autoAllowReadonly": true,
       "denyByDefault": true

@@ -58,14 +58,34 @@ def merge_branch(source: str, cwd: str) -> str:
 
 
 def revert_merge(cwd: str) -> None:
-    """Reset to pre-merge state via git reset --hard HEAD."""
-    subprocess.run(
-        ["git", "reset", "--hard", "HEAD"],
-        check=True,
+    """Abort a conflicted merge or undo a committed merge.
+
+    Detects whether a merge is in progress (conflict state) and uses
+    merge --abort; otherwise resets to before the merge commit.
+    """
+    # Check if we're mid-merge (conflict state)
+    merge_head = subprocess.run(
+        ["git", "rev-parse", "--verify", "MERGE_HEAD"],
         capture_output=True,
         text=True,
         cwd=cwd,
     )
+    if merge_head.returncode == 0:
+        subprocess.run(
+            ["git", "merge", "--abort"],
+            check=True,
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+        )
+    else:
+        subprocess.run(
+            ["git", "reset", "--hard", "HEAD~1"],
+            check=True,
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+        )
 
 
 def push_branch(branch: str) -> None:

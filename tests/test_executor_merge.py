@@ -23,6 +23,11 @@ def _task_entry(number, branch, worktree_path):
 class TestSequentialOrdering:
     """Merges happen one at a time in order."""
 
+    def test_run_tests_with_empty_command_returns_true(self):
+        """Empty test_command should pass (no tests configured)."""
+        from wave_runner.executor import _run_tests
+        assert _run_tests("", "/any/dir") is True
+
     @patch("wave_runner.executor.github")
     @patch("wave_runner.executor.git")
     @patch("wave_runner.executor._run_tests")

@@ -4,15 +4,19 @@ from __future__ import annotations
 
 import asyncio
 import os
+import shlex
 import subprocess
 
 from wave_runner import git, github
 from wave_runner.agent import invoke_agent, AgentResult
 from wave_runner.config import Config
+from wave_runner.hooks import run_pre_review
 from wave_runner.models import PipelineStage, PlannedTask, TaskResult
+from wave_runner.pipeline import review_loop
 
 
 MAX_MERGER_ATTEMPTS = 3
+AGENT_RETRY_ATTEMPTS = 2
 
 
 # --- Implement + Review (async, parallel) ---
@@ -60,18 +64,41 @@ async def _run_task(
             if design_path:
                 impl_prompt += f". Design: {design_path}"
 
-            impl_result = await asyncio.to_thread(invoke_agent, "implementer", impl_prompt, worktree_path)
+            impl_result = await asyncio.to_thread(
+                _invoke_with_retry, "implementer", impl_prompt, worktree_path
+            )
 
             if not impl_result.success:
                 await asyncio.to_thread(github.update_label, number, "implementing", "impl-failed", config.repo)
                 await asyncio.to_thread(github.post_comment, number, f"Implementer failed: {impl_result.reason}", config.repo)
                 return TaskResult(number=number, success=False, branch=branch, stdout=impl_result.stdout)
 
+            # Deterministic test verification after implementer
+            if config.test_command and not await asyncio.to_thread(_run_tests, config.test_command, worktree_path):
+                await asyncio.to_thread(github.update_label, number, "implementing", "impl-failed", config.repo)
+                await asyncio.to_thread(github.post_comment, number, "Implementer claimed success but tests fail", config.repo)
+                return TaskResult(number=number, success=False, branch=branch, stdout="post-implement test verification failed")
+
+            # Deterministic type check verification after implementer
+            if config.type_check_command and not await asyncio.to_thread(_run_tests, config.type_check_command, worktree_path):
+                await asyncio.to_thread(github.update_label, number, "implementing", "impl-failed", config.repo)
+                await asyncio.to_thread(github.post_comment, number, "Implementer claimed success but type checking fails", config.repo)
+                return TaskResult(number=number, success=False, branch=branch, stdout="post-implement type check verification failed")
+
             await asyncio.to_thread(github.update_label, number, "implementing", "reviewing", config.repo)
 
-        # Review phase
-        review_prompt = f"Review issue #{number}. Base ref: {feature_branch}"
-        review_result = await asyncio.to_thread(invoke_agent, "reviewer", review_prompt, worktree_path)
+        # Review phase — use pipeline.review_loop with pre-review hooks
+        is_ts = _has_ts_files(worktree_path)
+        review_result = await asyncio.to_thread(
+            review_loop,
+            cwd=worktree_path,
+            base_ref=feature_branch,
+            test_command=config.test_command,
+            type_check_command=config.type_check_command,
+            is_ts_project=is_ts,
+            issue_number=number,
+            repo=config.repo,
+        )
 
         if not review_result.success:
             await asyncio.to_thread(github.update_label, number, "reviewing", "review-failed", config.repo)
@@ -82,14 +109,34 @@ async def _run_task(
         return TaskResult(number=number, success=True, branch=branch, stdout=review_result.stdout)
 
 
+def _invoke_with_retry(name: str, prompt: str, cwd: str) -> AgentResult:
+    """Invoke agent with retry on transient 'no result line' failures."""
+    for attempt in range(AGENT_RETRY_ATTEMPTS):
+        result = invoke_agent(name, prompt, cwd)
+        if result.success or result.reason != "no result line":
+            return result
+    return result
+
+
+def _has_ts_files(path: str) -> bool:
+    """Check if directory contains TypeScript/JavaScript files."""
+    for root, _, files in os.walk(path):
+        for f in files:
+            if f.endswith((".ts", ".tsx", ".js", ".jsx")):
+                return True
+    return False
+
+
 # --- Merge phase (sync, sequential) ---
 
 
 def _run_tests(test_command: str, cwd: str) -> bool:
     """Run the test command. Returns True if tests pass."""
+    if not test_command:
+        return True
     try:
         subprocess.run(
-            test_command.split(),
+            shlex.split(test_command),
             cwd=cwd,
             check=True,
             capture_output=True,

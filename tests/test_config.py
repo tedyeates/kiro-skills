@@ -19,14 +19,15 @@ def write_config(repo_root: Path, frontmatter: str):
 
 class TestLoadConfig:
     def test_full_config(self, tmp_repo):
-        write_config(tmp_repo, "repo: owner/repo\ntest_command: pytest\nbuild_command: npm build\nconcurrency: 5\n")
+        write_config(tmp_repo, "repo: owner/repo\ntest_command: pytest\nbuild_command: npm build\ntype_check_command: mypy .\nconcurrency: 5\n")
         cfg = load_config(tmp_repo)
-        assert cfg == Config(repo="owner/repo", test_command="pytest", build_command="npm build", concurrency=5)
+        assert cfg == Config(repo="owner/repo", test_command="pytest", build_command="npm build", type_check_command="mypy .", concurrency=5)
 
     def test_defaults_for_optional_fields(self, tmp_repo):
         write_config(tmp_repo, "repo: owner/repo\ntest_command: pytest\n")
         cfg = load_config(tmp_repo)
         assert cfg.build_command is None
+        assert cfg.type_check_command is None
         assert cfg.concurrency == 3
 
     def test_raises_on_missing_file(self, tmp_path):

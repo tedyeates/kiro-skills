@@ -10,6 +10,7 @@ import subprocess
 import sys
 
 from wave_runner import executor, git, github, planner, reporter
+from wave_runner.config import load_config, Config
 from wave_runner.models import Task, TaskState, PlannedTask, TaskResult
 
 
@@ -17,7 +18,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse CLI arguments."""
     parser = argparse.ArgumentParser(description="Wave-runner: orchestrate PRD implementation wave by wave")
     parser.add_argument("--prd", type=int, required=True, help="PRD issue number")
-    parser.add_argument("--concurrency", type=int, default=3, help="Max parallel tasks per wave (default: 3)")
+    parser.add_argument("--concurrency", type=int, default=None, help="Max parallel tasks per wave (overrides config)")
     parser.add_argument("--base", type=str, default="main", help="Base branch (default: main)")
     parser.add_argument("--dry-run", action="store_true", help="Show wave plan without executing")
     return parser.parse_args(argv)
@@ -62,9 +63,34 @@ def _all_closed(raw_issues: list[dict]) -> bool:
     return all(i["state"] == "closed" for i in raw_issues)
 
 
+def _branch_exists(branch: str) -> bool:
+    """Check if a local branch already exists."""
+    result = subprocess.run(
+        ["git", "rev-parse", "--verify", branch],
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode == 0
+
+
+def _build_config(args: argparse.Namespace) -> Config:
+    """Load config from project-config.md, with CLI overrides."""
+    from pathlib import Path
+    try:
+        cfg = load_config(Path(os.getcwd()))
+    except Exception:
+        # Fallback: derive repo, no test command
+        cfg = Config(repo=derive_repo(), test_command="")
+
+    if args.concurrency is not None:
+        cfg.concurrency = args.concurrency
+    return cfg
+
+
 def main_loop(args: argparse.Namespace) -> str:
     """Main orchestration loop. Returns 'complete', 'halted', or 'empty'."""
-    repo = derive_repo()
+    config = _build_config(args)
+    repo = config.repo
     prd = github.fetch_prd(args.prd, repo)
     title = prd["title"]
     design_path = prd.get("design_path")
@@ -82,7 +108,8 @@ def main_loop(args: argparse.Namespace) -> str:
     if args.dry_run:
         print(f"DRY RUN — Wave plan for PRD #{args.prd} ({title}):")
         print(f"  Feature branch: {feature_branch}")
-        print(f"  Concurrency: {args.concurrency}")
+        print(f"  Concurrency: {config.concurrency}")
+        print(f"  Test command: {config.test_command or '(none)'}")
         if not wave:
             print("  No eligible tasks.")
         for pt in wave:
@@ -90,10 +117,9 @@ def main_loop(args: argparse.Namespace) -> str:
         return "dry-run"
 
     # Create or reuse feature branch
-    try:
+    if not _branch_exists(feature_branch):
         git.create_feature_branch(feature_branch, args.base)
-    except subprocess.CalledProcessError:
-        # Branch exists, switch to it
+    else:
         subprocess.run(
             ["git", "checkout", feature_branch],
             check=True, capture_output=True, text=True,
@@ -133,7 +159,7 @@ def main_loop(args: argparse.Namespace) -> str:
 
         # Run implement + review phase (async)
         wave_results: list[TaskResult] = asyncio.run(
-            executor.run_wave(wave, _config_with_concurrency(args, repo), feature_branch, design_path, worktree_base)
+            executor.run_wave(wave, config, feature_branch, design_path, worktree_base)
         )
 
         # Run merge phase (sequential) for successful tasks
@@ -144,9 +170,7 @@ def main_loop(args: argparse.Namespace) -> str:
 
         merge_results: list[TaskResult] = []
         if mergeable:
-            from wave_runner.config import Config
-            cfg = Config(repo=repo, test_command="", concurrency=args.concurrency)
-            merge_results = executor.run_merge_phase(mergeable, feature_branch, repo_dir, cfg)
+            merge_results = executor.run_merge_phase(mergeable, feature_branch, repo_dir, config)
 
         all_results = [r for r in wave_results if not r.success] + merge_results
 
@@ -161,12 +185,6 @@ def main_loop(args: argparse.Namespace) -> str:
         if any(not r.success for r in all_results):
             print("Failures detected. Halting after wave report.")
             return "halted"
-
-
-def _config_with_concurrency(args: argparse.Namespace, repo: str):
-    """Build a minimal Config for the executor."""
-    from wave_runner.config import Config
-    return Config(repo=repo, test_command="", concurrency=args.concurrency)
 
 
 def main():

@@ -3,7 +3,18 @@
 from __future__ import annotations
 
 from wave_runner.agent import AgentResult, invoke_agent
-from wave_runner.hooks import run_pre_review, format_for_prompt
+from wave_runner.hooks import PreReviewOutput, run_pre_review, format_for_prompt
+
+
+def _hooks_pass(output: PreReviewOutput) -> bool:
+    """Check if all deterministic hooks passed."""
+    if not output.test_passed:
+        return False
+    if not output.type_check_passed:
+        return False
+    if output.fallow_output not in (None, "(no dead code found)"):
+        return False
+    return True
 
 
 def review_loop(
@@ -11,6 +22,7 @@ def review_loop(
     cwd: str,
     base_ref: str,
     test_command: str,
+    type_check_command: str | None = None,
     is_ts_project: bool = False,
     issue_number: int,
     repo: str,
@@ -27,11 +39,12 @@ def review_loop(
             cwd=cwd,
             base_ref=base_ref,
             test_command=test_command,
+            type_check_command=type_check_command,
             is_ts_project=is_ts_project,
         )
 
         # After a reviewer fix, if hooks pass we're done
-        if attempt > 1 and hook_output.test_passed and hook_output.fallow_output in (None, "(no dead code found)"):
+        if attempt > 1 and _hooks_pass(hook_output):
             return AgentResult(success=True, reason=None, stdout="post-review hook passed")
 
         prompt = (
@@ -51,10 +64,11 @@ def review_loop(
         cwd=cwd,
         base_ref=base_ref,
         test_command=test_command,
+        type_check_command=type_check_command,
         is_ts_project=is_ts_project,
     )
 
-    if final.test_passed and final.fallow_output in (None, "(no dead code found)"):
+    if _hooks_pass(final):
         return AgentResult(success=True, reason=None, stdout="post-review hook passed after final attempt")
 
     return AgentResult(success=False, reason=f"checks still failing after {max_attempts} attempts", stdout="")

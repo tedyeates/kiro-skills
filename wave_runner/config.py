@@ -14,6 +14,7 @@ class Config:
     repo: str
     test_command: str
     build_command: Optional[str] = None
+    type_check_command: Optional[str] = None
     concurrency: int = 3
 
 
@@ -47,5 +48,6 @@ def load_config(repo_root: Path) -> Config:
         repo=data["repo"],
         test_command=data["test_command"],
         build_command=data.get("build_command"),
+        type_check_command=data.get("type_check_command"),
         concurrency=data.get("concurrency", 3),
     )

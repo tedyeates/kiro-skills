@@ -89,6 +89,27 @@ Options:
 - **Multi-context** — `CONTEXT-MAP.md` at root pointing to per-context files (monorepos)
 - **None yet** — will be created lazily by `grill-with-docs` when first term is resolved
 
+**Section D — Commands**
+
+> The wave-runner orchestrator and reviewer agent need to know how to test, type-check, and build your project.
+
+Ask for each command. Infer defaults from project files:
+- `package.json` with `"test"` script → `pnpm test` or `npm test`
+- `pyproject.toml` with pytest config → `pytest`
+- `tsconfig.json` present → `tsc --noEmit`
+- `mypy.ini` or `[tool.mypy]` in `pyproject.toml` → `mypy .`
+- `Cargo.toml` → `cargo test` / `cargo check`
+
+Present inferred defaults and let user confirm or override:
+
+| Command | Purpose | Example |
+|---------|---------|---------|
+| `test_command` | Run tests | `pytest`, `pnpm test`, `cargo test` |
+| `type_check_command` | Static type checking | `mypy .`, `tsc --noEmit`, `cargo check` |
+| `build_command` | Build step (optional) | `pnpm build`, `cargo build` |
+
+All three are written to the YAML frontmatter of `project-config.md`.
+
 ### 3. Write configuration
 
 Create `.kiro/steering/project-config.md`:
@@ -96,6 +117,11 @@ Create `.kiro/steering/project-config.md`:
 ```markdown
 ---
 inclusion: always
+repo: {owner/repo-name — if github or gitlab}
+test_command: {test command, e.g. "pytest", "pnpm test"}
+type_check_command: {type check command or omit if none, e.g. "mypy .", "tsc --noEmit"}
+build_command: {build command or omit if none, e.g. "pnpm build"}
+concurrency: 3
 ---
 # Project Configuration
 

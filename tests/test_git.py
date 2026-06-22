@@ -88,11 +88,43 @@ class TestMergeBranch:
 
 
 class TestRevertMerge:
-    def test_resets_hard_to_head(self, mock_run):
+    def test_aborts_merge_when_in_conflict_state(self, mock_run):
+        # MERGE_HEAD exists → conflict state
+        mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="abc123", stderr="")
+
         revert_merge("D:/feature-dir")
 
-        mock_run.assert_called_once_with(
-            ["git", "reset", "--hard", "HEAD"],
+        assert mock_run.call_count == 2
+        # First: check MERGE_HEAD
+        mock_run.assert_any_call(
+            ["git", "rev-parse", "--verify", "MERGE_HEAD"],
+            capture_output=True,
+            text=True,
+            cwd="D:/feature-dir",
+        )
+        # Second: merge --abort
+        mock_run.assert_any_call(
+            ["git", "merge", "--abort"],
+            check=True,
+            capture_output=True,
+            text=True,
+            cwd="D:/feature-dir",
+        )
+
+    def test_resets_to_parent_when_merge_committed(self, mock_run):
+        # MERGE_HEAD doesn't exist → merge was committed
+        def side_effect(cmd, **kwargs):
+            if cmd == ["git", "rev-parse", "--verify", "MERGE_HEAD"]:
+                return subprocess.CompletedProcess(args=cmd, returncode=1, stdout="", stderr="")
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        mock_run.side_effect = side_effect
+
+        revert_merge("D:/feature-dir")
+
+        assert mock_run.call_count == 2
+        mock_run.assert_any_call(
+            ["git", "reset", "--hard", "HEAD~1"],
             check=True,
             capture_output=True,
             text=True,
