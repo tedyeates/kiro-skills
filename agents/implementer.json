@@ -33,7 +33,6 @@
   },
   "resources": [
     "skill://~/.kiro/skills/tdd/SKILL.md",
-    "skill://~/.kiro/skills/diagnose/SKILL.md",
     "file://~/.kiro/steering/corrections.md",
     "file://.kiro/corrections.md"
   ]

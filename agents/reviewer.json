@@ -37,8 +37,6 @@
     }
   },
   "resources": [
-    "skill://~/.kiro/skills/fallow/SKILL.md",
-    "skill://~/.kiro/skills/diagnose/SKILL.md",
     "file://~/.kiro/steering/corrections.md",
     "file://.kiro/corrections.md"
   ]

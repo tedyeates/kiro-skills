@@ -135,3 +135,55 @@ IMPLEMENTER_PROMPT = "Implement issue #{number} for feature {feature}. Working d
 REVIEWER_PROMPT = "Review issue #{number}. Working directory: {worktree_path}. Base ref: {feature_branch}"
 MERGER_PROMPT = "Fix merge for issue #{number}. Repo: {repo}. Design: {design_path}. Failure:\n{failure_output}"
 ```
+
+
+## Pre-Review Hook Pattern
+
+The orchestrator runs deterministic checks BEFORE invoking the reviewer agent. This reduces the reviewer's context budget, eliminates redundant tool calls, and guarantees the diff is correct (three-dot against base_ref).
+
+### What the hook runs
+
+| Check | When | Source |
+|-------|------|--------|
+| `git diff {base_ref}...HEAD` | Always | Shows only this task's changes |
+| `{test_command}` | Always | From project-config.md |
+| `fallow dead-code` | JS/TS projects | Detects unused exports/files |
+
+### Flow
+
+```
+Implementer finishes
+  → Orchestrator runs pre-review hook (hooks.run_pre_review)
+  → Hook output formatted (hooks.format_for_prompt)
+  → Reviewer invoked with pre-computed results in prompt
+  → Reviewer skips running diff/tests/fallow itself
+  → Reviewer only re-runs commands if it needs to VERIFY a fix
+```
+
+### Reviewer prompt injection
+
+The executor appends hook output to the reviewer prompt:
+
+```python
+from wave_runner.hooks import run_pre_review, format_for_prompt
+
+hook_output = run_pre_review(
+    cwd=worktree_path,
+    base_ref=feature_branch,
+    test_command=config.test_command,
+    is_ts_project=has_ts_files(worktree_path),
+)
+
+reviewer_prompt = (
+    f"Review issue #{number}. Working directory: {worktree_path}. "
+    f"Base ref: {feature_branch}\n\n"
+    f"# Pre-Review Check Results\n\n{format_for_prompt(hook_output)}"
+)
+```
+
+### Benefits
+
+- Reviewer context is smaller (no diagnose skill, no running commands to get diff)
+- Three-dot diff guarantees only task changes shown (not accumulated feature branch history)
+- Test results pre-computed = faster reviewer startup
+- If tests already pass and no dead code, reviewer skips fix loop entirely
