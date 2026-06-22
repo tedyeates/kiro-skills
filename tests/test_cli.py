@@ -29,6 +29,14 @@ class TestParseArgs:
         with pytest.raises(SystemExit):
             parse_args([])
 
+    def test_help_prints_usage(self, capsys):
+        with pytest.raises(SystemExit) as exc_info:
+            parse_args(["--help"])
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+        assert "wave-runner" in captured.out.lower() or "Wave-runner" in captured.out
+        assert "--prd" in captured.out
+
 
 class TestDeriveRepo:
     @patch("wave_runner.cli.subprocess.run")

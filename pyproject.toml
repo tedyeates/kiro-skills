@@ -5,8 +5,11 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "wave-runner"
 version = "0.1.0"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = ["pyyaml>=6.0"]
+
+[tool.setuptools.packages.find]
+include = ["wave_runner*"]
 
 [project.scripts]
 wave-runner = "wave_runner.cli:main"
