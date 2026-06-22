@@ -43,13 +43,16 @@ gh api repos/{owner}/{repo}/issues/{parent_number}/sub_issues \
 
 ## Add dependency (blocked by)
 
-Establishes execution ordering. Use `-F` for the integer id:
+Establishes execution ordering. Use `-F` for the integer id. Requires API version header:
 
 ```bash
-gh api repos/{owner}/{repo}/issues/{task_number}/sub_issues/{sub_issue_id}/dependencies \
+gh api repos/{owner}/{repo}/issues/{issue_number}/dependencies/blocked_by \
   -X POST \
-  -F blocked_by_id={blocker_id}
+  -H "X-GitHub-Api-Version: 2026-03-10" \
+  -F issue_id={blocker_id}
 ```
+
+**Critical:** `issue_id` is the blocker's `id` (large integer), not its `#number`.
 
 ## Read operations (for orchestrator)
 

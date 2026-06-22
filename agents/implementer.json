@@ -3,15 +3,15 @@
   "description": "Constrained agent for implementing individual tasks via TDD. Accepts a task number, fetches the GitHub issue, reads design.md for context, and implements.",
   "prompt": "file://implementer-prompt.md",
   "tools": ["read", "write", "shell", "grep", "glob", "code"],
-  "allowedTools": ["read", "grep", "glob", "code"],
+  "allowedTools": ["read", "write", "shell", "grep", "glob", "code"],
   "toolsSettings": {
     "shell": {
       "allowedCommands": [
-        "gh issue view",
-        "gh issue develop",
-        "git checkout",
-        "git add",
-        "git commit",
+        "gh issue view.*",
+        "git add.*",
+        "git commit.*",
+        "git status",
+        "git diff.*",
         "deno test",
         "deno check",
         "deno lint",
@@ -24,15 +24,15 @@
         "cargo test",
         "cargo check",
         "cargo build",
-        "git status",
-        "git diff"
+        "pytest.*",
+        "python -m pytest.*"
       ],
-      "autoAllowReadonly": true
+      "autoAllowReadonly": true,
+      "denyByDefault": true
     }
   },
   "resources": [
     "skill://~/.kiro/skills/tdd/SKILL.md",
-    "skill://~/.kiro/skills/diagnose/SKILL.md",
     "file://~/.kiro/steering/corrections.md",
     "file://.kiro/corrections.md"
   ]
