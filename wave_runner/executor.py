@@ -58,6 +58,10 @@ async def _run_task(
         # Create worktree for implement/review stages
         await asyncio.to_thread(git.create_worktree, branch, worktree_path, feature_branch)
 
+        # Run setup command if configured (e.g. venv creation, dep install)
+        if config.setup_command:
+            await asyncio.to_thread(_run_setup, config.setup_command, worktree_path)
+
         # Implement phase
         if planned.stage == PipelineStage.FULL:
             impl_prompt = f"Implement issue #{number} for feature {feature_branch}"
@@ -145,6 +149,18 @@ def _run_tests(test_command: str, cwd: str) -> bool:
         return True
     except subprocess.CalledProcessError:
         return False
+
+
+def _run_setup(setup_command: str, cwd: str) -> None:
+    """Run setup command in worktree. Raises on failure."""
+    subprocess.run(
+        setup_command,
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+        text=True,
+        shell=True,
+    )
 
 
 def run_merge_phase(
