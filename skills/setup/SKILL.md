@@ -107,8 +107,29 @@ Present inferred defaults and let user confirm or override:
 | `test_command` | Run tests | `pytest`, `pnpm test`, `cargo test` |
 | `type_check_command` | Static type checking | `mypy .`, `tsc --noEmit`, `cargo check` |
 | `build_command` | Build step (optional) | `pnpm build`, `cargo build` |
+| `setup_command` | Per-worktree setup (optional) | `python -m venv .venv && .venv/Scripts/pip install -r requirements.txt` |
 
-All three are written to the YAML frontmatter of `project-config.md`.
+The `setup_command` runs once per worktree before the implementer agent starts. Typical use: creating a venv and installing deps so test/type-check commands work in isolated worktrees.
+
+Infer defaults:
+- `requirements.txt` present → `python -m venv .venv && .venv/Scripts/pip install -r requirements.txt`
+- `pyproject.toml` with `[project.dependencies]` → `python -m venv .venv && .venv/Scripts/pip install -e .`
+- `package.json` present → `npm ci` or `pnpm install`
+- No dependency file → omit
+
+If `setup_command` creates a venv, the user **must** prefix `test_command` and `type_check_command` with the venv binary path. Subprocesses don't inherit venv activation — each command runs in a fresh process, so only explicit paths work:
+
+- Windows: `.venv/Scripts/pytest`, `.venv/Scripts/mypy .`
+- Linux/macOS: `.venv/bin/pytest`, `.venv/bin/mypy .`
+
+Example (Windows, Python project):
+```yaml
+setup_command: "python -m venv .venv && .venv/Scripts/pip install -r requirements.txt"
+test_command: ".venv/Scripts/pytest"
+type_check_command: ".venv/Scripts/mypy ."
+```
+
+All commands are written to the YAML frontmatter of `project-config.md`.
 
 ### 3. Write configuration
 
@@ -121,6 +142,7 @@ repo: {owner/repo-name — if github or gitlab}
 test_command: {test command, e.g. "pytest", "pnpm test"}
 type_check_command: {type check command or omit if none, e.g. "mypy .", "tsc --noEmit"}
 build_command: {build command or omit if none, e.g. "pnpm build"}
+setup_command: {worktree setup or omit if none, e.g. "python -m venv .venv && .venv/Scripts/pip install -r requirements.txt"}
 concurrency: 3
 ---
 # Project Configuration
