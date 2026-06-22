@@ -1,0 +1,153 @@
+"""Tests for the CLI module — entry point and main orchestration loop."""
+
+from unittest.mock import patch, MagicMock
+
+import pytest
+
+from wave_runner.cli import parse_args, derive_repo, main_loop
+
+
+class TestParseArgs:
+    def test_prd_required(self):
+        args = parse_args(["--prd", "42"])
+        assert args.prd == 42
+
+    def test_defaults(self):
+        args = parse_args(["--prd", "1"])
+        assert args.concurrency == 3
+        assert args.base == "main"
+        assert args.dry_run is False
+
+    def test_all_flags(self):
+        args = parse_args(["--prd", "10", "--concurrency", "5", "--base", "develop", "--dry-run"])
+        assert args.prd == 10
+        assert args.concurrency == 5
+        assert args.base == "develop"
+        assert args.dry_run is True
+
+    def test_missing_prd_raises(self):
+        with pytest.raises(SystemExit):
+            parse_args([])
+
+
+class TestDeriveRepo:
+    @patch("wave_runner.cli.subprocess.run")
+    def test_derives_from_https(self, mock_run):
+        mock_run.return_value = MagicMock(stdout="https://github.com/owner/repo.git\n")
+        assert derive_repo() == "owner/repo"
+
+    @patch("wave_runner.cli.subprocess.run")
+    def test_derives_from_ssh(self, mock_run):
+        mock_run.return_value = MagicMock(stdout="git@github.com:owner/repo.git\n")
+        assert derive_repo() == "owner/repo"
+
+    @patch("wave_runner.cli.subprocess.run")
+    def test_strips_dotgit(self, mock_run):
+        mock_run.return_value = MagicMock(stdout="https://github.com/foo/bar.git\n")
+        assert derive_repo() == "foo/bar"
+
+    @patch("wave_runner.cli.subprocess.run")
+    def test_no_dotgit_suffix(self, mock_run):
+        mock_run.return_value = MagicMock(stdout="https://github.com/foo/bar\n")
+        assert derive_repo() == "foo/bar"
+
+
+class TestMainLoop:
+    @patch("wave_runner.cli.reporter")
+    @patch("wave_runner.cli.github")
+    @patch("wave_runner.cli.planner")
+    @patch("wave_runner.cli.executor")
+    @patch("wave_runner.cli.git")
+    @patch("wave_runner.cli.derive_repo")
+    def test_dry_run_prints_plan(self, mock_derive, mock_git, mock_exec, mock_planner, mock_github, mock_reporter, capsys):
+        mock_derive.return_value = "owner/repo"
+        mock_github.fetch_prd.return_value = {"title": "Feature", "body": "", "design_path": None}
+        mock_github.fetch_sub_issues.return_value = [
+            {"number": 1, "state": "open", "labels": ["ready-for-agent"], "blockers": []},
+            {"number": 2, "state": "open", "labels": ["ready-for-agent"], "blockers": [1]},
+        ]
+
+        from wave_runner.models import Task, TaskState, PlannedTask, PipelineStage
+        mock_planner.compute_wave.return_value = [
+            PlannedTask(task=Task(number=1, state=TaskState.OPEN, labels=["ready-for-agent"], blockers=[]), stage=PipelineStage.FULL),
+        ]
+
+        args = parse_args(["--prd", "99", "--dry-run"])
+        main_loop(args)
+
+        captured = capsys.readouterr()
+        assert "#1" in captured.out
+        assert "dry-run" in captured.out.lower() or "DRY RUN" in captured.out
+        # Should not run executor or git
+        mock_exec.run_wave.assert_not_called()
+        mock_git.create_feature_branch.assert_not_called()
+
+    @patch("wave_runner.cli.reporter")
+    @patch("wave_runner.cli.github")
+    @patch("wave_runner.cli.planner")
+    @patch("wave_runner.cli.executor")
+    @patch("wave_runner.cli.git")
+    @patch("wave_runner.cli.derive_repo")
+    def test_halts_on_failure(self, mock_derive, mock_git, mock_exec, mock_planner, mock_github, mock_reporter):
+        mock_derive.return_value = "owner/repo"
+        mock_github.fetch_prd.return_value = {"title": "Feature X", "body": "", "design_path": None}
+        mock_github.fetch_sub_issues.return_value = [
+            {"number": 1, "state": "open", "labels": ["ready-for-agent"], "blockers": []},
+        ]
+
+        from wave_runner.models import Task, TaskState, PlannedTask, PipelineStage, TaskResult
+        mock_planner.compute_wave.return_value = [
+            PlannedTask(task=Task(number=1, state=TaskState.OPEN), stage=PipelineStage.FULL),
+        ]
+
+        # run_wave is async — mock must return a coroutine
+        async def fake_run_wave(*a, **kw):
+            return [TaskResult(number=1, success=False, branch="task/1", stdout="error")]
+
+        mock_exec.run_wave = fake_run_wave
+        mock_exec.run_merge_phase.return_value = []
+
+        mock_git.create_feature_branch.return_value = None
+        mock_git.push_branch.return_value = None
+
+        args = parse_args(["--prd", "99"])
+        result = main_loop(args)
+
+        assert result == "halted"
+        mock_github.create_pr.assert_not_called()
+
+    @patch("wave_runner.cli.reporter")
+    @patch("wave_runner.cli.github")
+    @patch("wave_runner.cli.planner")
+    @patch("wave_runner.cli.executor")
+    @patch("wave_runner.cli.git")
+    @patch("wave_runner.cli.derive_repo")
+    def test_creates_pr_on_success(self, mock_derive, mock_git, mock_exec, mock_planner, mock_github, mock_reporter):
+        mock_derive.return_value = "owner/repo"
+        mock_github.fetch_prd.return_value = {"title": "Feature X", "body": "", "design_path": None}
+        # First call: open task. Second call (after wave): all closed.
+        mock_github.fetch_sub_issues.side_effect = [
+            [{"number": 1, "state": "open", "labels": ["ready-for-agent"], "blockers": []}],
+            [{"number": 1, "state": "closed", "labels": [], "blockers": []}],
+        ]
+
+        from wave_runner.models import Task, TaskState, PlannedTask, PipelineStage, TaskResult
+        mock_planner.compute_wave.return_value = [
+            PlannedTask(task=Task(number=1, state=TaskState.OPEN), stage=PipelineStage.FULL),
+        ]
+
+        async def fake_run_wave(*a, **kw):
+            return [TaskResult(number=1, success=True, branch="task/1")]
+
+        mock_exec.run_wave = fake_run_wave
+        mock_exec.run_merge_phase.return_value = [TaskResult(number=1, success=True, branch="task/1")]
+
+        mock_git.create_feature_branch.return_value = None
+        mock_git.push_branch.return_value = None
+
+        args = parse_args(["--prd", "99"])
+        result = main_loop(args)
+
+        assert result == "complete"
+        mock_git.push_branch.assert_called_once()
+        mock_github.create_pr.assert_called_once()
