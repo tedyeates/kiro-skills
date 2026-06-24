@@ -1,12 +1,13 @@
 {
   "name": "reviewer",
-  "description": "Adversarial code reviewer. Receives pre-computed diff, test results, and fallow output from orchestrator. Fixes mechanical issues and reports findings.",
+  "description": "Independent code reviewer. Reviews diff, assesses test quality, finds issues, runs checks, and fixes problems.",
   "prompt": "file://reviewer-prompt.md",
   "tools": ["read", "write", "shell", "grep", "glob", "code"],
   "allowedTools": ["read", "write", "shell", "grep", "glob", "code"],
   "toolsSettings": {
     "shell": {
       "allowedCommands": [
+        "gh issue view.*",
         "git status",
         "git diff.*",
         "git add.*",
@@ -14,15 +15,23 @@
         "deno test",
         "deno check",
         "deno lint",
-        "pnpm test",
-        "pnpm build",
-        "npm test",
-        "npm run build",
-        "cargo test",
-        "cargo check",
+        "pnpm test.*",
+        "pnpm build.*",
+        "pnpm run.*",
+        "pnpm lint.*",
+        "npm test.*",
+        "npm run.*",
+        "tsc.*",
+        "mypy.*",
+        "cargo test.*",
+        "cargo check.*",
+        "cargo build.*",
         "pytest.*",
         "python -m pytest.*",
-        "fallow fix.*"
+        ".venv/Scripts/pytest.*",
+        ".venv/Scripts/mypy.*",
+        ".venv/bin/pytest.*",
+        ".venv/bin/mypy.*"
       ],
       "autoAllowReadonly": true,
       "denyByDefault": true

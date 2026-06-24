@@ -59,7 +59,7 @@ Default: infer from `git remote` (GitHub remote → GitHub, GitLab remote → Gi
    # Triage labels
    gh label create "ready-for-agent" --description "Fully specified, AFK-ready" --color 0E8A16 --force
    gh label create "ready-for-human" --description "Needs human implementation" --color FBCA04 --force
-   # Pipeline labels (used by wave-runner orchestrator)
+   # Pipeline labels (used by orchestrate skill)
    gh label create "implementing" --description "Agent currently implementing" --color FBCA04 --force
    gh label create "reviewing" --description "Agent currently reviewing" --color 1D76DB --force
    gh label create "merging" --description "Merge in progress" --color 5319E7 --force
@@ -91,7 +91,7 @@ Options:
 
 **Section D — Commands**
 
-> The wave-runner orchestrator and reviewer agent need to know how to test, type-check, and build your project.
+> The orchestrate skill and reviewer agent need to know how to test, type-check, and build your project.
 
 Ask for each command. Infer defaults from project files:
 - `package.json` with `"test"` script → `pnpm test` or `npm test`
