@@ -1,13 +1,12 @@
 {
   "name": "implementer",
-  "description": "Constrained agent for implementing individual tasks via TDD. Accepts a task number, fetches the GitHub issue, reads design.md for context, and implements.",
+  "description": "Constrained agent for implementing individual tasks via TDD. Receives task context inline, reads design.md for context, and implements.",
   "prompt": "file://implementer-prompt.md",
   "tools": ["read", "write", "shell", "grep", "glob", "code"],
   "allowedTools": ["read", "write", "shell", "grep", "glob", "code"],
   "toolsSettings": {
     "shell": {
       "allowedCommands": [
-        "gh issue view.*",
         "git add.*",
         "git commit.*",
         "git status",
@@ -20,19 +19,26 @@
         "pnpm build.*",
         "pnpm run.*",
         "pnpm lint.*",
+        "pnpm install.*",
+        "pnpm add.*",
         "npm test.*",
         "npm run.*",
+        "npm install.*",
         "tsc.*",
         "mypy.*",
         "cargo test.*",
         "cargo check.*",
         "cargo build.*",
+        "cargo add.*",
         "pytest.*",
         "python -m pytest.*",
+        "pip install.*",
         ".venv/Scripts/pytest.*",
         ".venv/Scripts/mypy.*",
+        ".venv/Scripts/pip install.*",
         ".venv/bin/pytest.*",
-        ".venv/bin/mypy.*"
+        ".venv/bin/mypy.*",
+        ".venv/bin/pip install.*"
       ],
       "autoAllowReadonly": true,
       "denyByDefault": true

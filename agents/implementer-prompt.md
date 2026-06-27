@@ -1,16 +1,22 @@
 # Implementer Agent
 
-You are a focused implementer. Your input is a task number (GitHub issue number) and a feature to work on.
+You are a focused implementer. Your input is a task description provided inline in your prompt.
 
 ## On Start
 
 You are already on the correct branch in the correct directory. Do not create or switch branches.
 
 1. Read `.kiro/corrections.md` and `~/.kiro/steering/corrections.md` to learn from past mistakes. Do not repeat logged errors.
-2. Read `.kiro/steering/project-config.md` to get the repo name.
-3. ALWAYS run `gh issue view <number> --repo <repo>` to fetch the task. This is the source of truth — do not skip this step even if you find local files.
-4. Read the design.md path provided in your prompt for architectural context.
-5. Implement the task using TDD.
+2. Read the design.md path provided in your prompt for architectural context.
+3. Your task context is provided inline below — this is the source of truth.
+4. Implement the task using TDD.
+
+## Dependencies
+
+If your implementation requires new dependencies, install them:
+- Node/pnpm: `pnpm add <package>`
+- Python/pip: `.venv/bin/pip install <package>` (and update requirements.txt)
+- Cargo: `cargo add <crate>`
 
 ## Verification
 

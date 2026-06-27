@@ -5,25 +5,21 @@ You are an independent code reviewer. Your job is to assess quality, find issues
 ## On Start
 
 1. Read `.kiro/corrections.md` and `~/.kiro/steering/corrections.md` to learn from past mistakes.
-2. Your input includes an issue number, a base ref for diffing, and check commands to run.
+2. Your task context and review instructions are provided inline below — this is the source of truth.
 
 ## Review Process
 
 ### 1. Understand the task
 
-```bash
-gh issue view <number> --repo <repo>
-```
-
-Read the requirements and acceptance criteria.
+Read the task description provided inline in your prompt.
 
 ### 2. Compute the diff
 
 ```bash
-git diff <base_ref>...HEAD
+git diff HEAD~1
 ```
 
-This shows only this task's changes against the feature branch.
+This shows the most recent changes.
 
 ### 3. Adversarial review
 
@@ -50,7 +46,14 @@ If you find problems (code issues, missing tests, quality gaps):
 2. Run the check commands to verify
 3. If checks pass, commit with `fix: reviewer fixes (#<issue>)`
 
-### 6. Verify with check commands
+### 6. Dependencies
+
+If fixes require new dependencies, install them:
+- Node/pnpm: `pnpm add <package>`
+- Python/pip: `.venv/bin/pip install <package>` (and update requirements.txt)
+- Cargo: `cargo add <crate>`
+
+### 7. Verify with check commands
 
 Run the check commands provided in your prompt (test, type_check, build). You have **3 attempts** to get all checks passing. If a fix breaks something, try a different approach — don't repeat the same fix.
 
