@@ -60,7 +60,13 @@ gh auth login
 
 ```bash
 curl -fsSL https://cli.kiro.dev/install | bash
-kiro-cli login --use-device-flow
+kiro-cli login
+```
+
+Verify:
+
+```bash
+kiro-cli whoami
 ```
 
 ## 8. Clone Repos
@@ -80,7 +86,7 @@ docker build -t kiro-runner -f ~/projects/kiro-skills/sandcastle/Dockerfile .
 ## 10. Verify
 
 ```bash
-docker run --rm kiro-runner bash -c "node --version && pnpm --version && python3 --version && git --version"
+docker run --rm --entrypoint bash kiro-runner -c "node --version && pnpm --version && python3 --version && git --version"
 ```
 
 You're ready to run the sandcastle orchestrator:
