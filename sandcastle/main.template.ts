@@ -21,6 +21,7 @@ const config = {
   typeCheck:
     "cd stockmanagement_bg && .venv/bin/pyright && cd ../stockmanagement-fe && pnpm tsc --noEmit",
   timeoutSeconds: 900,
+  agentLabel: "ready-for-agent", // only tasks carrying this label are implemented
 };
 
 // ─── CLI Arg Parsing ─────────────────────────────────────────────────────────
@@ -76,11 +77,13 @@ function fetchAllSubIssues(): SubIssue[] {
     title: string;
     body: string;
     state: string;
+    labels?: Array<{ name: string }>;
     issue_dependencies_summary?: { blocked_by: number };
   }> = JSON.parse(raw);
 
   return issues
     .filter((i) => i.state === "open")
+    .filter((i) => (i.labels ?? []).some((l) => l.name === config.agentLabel))
     .map((i) => {
       let blockedBy: number[] = [];
       if ((i.issue_dependencies_summary?.blocked_by ?? 0) > 0) {
@@ -112,16 +115,24 @@ async function main() {
   const allIssues = fetchAllSubIssues();
 
   if (allIssues.length === 0) {
-    log("No open sub-issues found.");
+    log(`No open '${config.agentLabel}' sub-issues found. Nothing to do.`);
     process.exit(0);
   }
 
-  log(`Found ${allIssues.length} open sub-issue(s):`);
+  log(`Found ${allIssues.length} open '${config.agentLabel}' sub-issue(s):`);
   for (const t of allIssues) console.log(`  #${t.number} — ${t.title}`);
 
   if (dryRun) {
     log("Dry run — exiting without execution.");
     process.exit(0);
+  }
+
+  // Halt before spinning up the sandbox if nothing is actionable right now.
+  if (!nextUnblocked(allIssues, new Set<number>())) {
+    log(
+      `No unblocked '${config.agentLabel}' tasks — all remaining tasks are blocked by open dependencies. Halting.`
+    );
+    process.exit(1);
   }
 
   // ─── Branch & Sandbox Lifecycle (#41) ────────────────────────────────────

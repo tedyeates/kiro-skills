@@ -189,9 +189,107 @@ Copy-Item .\steering\* ~\.kiro\steering\
 
 The log file lives outside `steering/` so it can grow without bloating the steering context. Subagents receive both files so they read existing corrections and append new ones.
 
+## Sandcastle Runner
+
+The sandcastle runner autonomously implements a whole PRD's worth of GitHub issues. It runs Kiro agents **sequentially inside a Docker container** and gates success on **deterministic test + type-check results** rather than parsing agent self-reporting. It replaces the older `wave_runner` (Python) with a simpler, more reliable TypeScript orchestrator built on [`@ai-hero/sandcastle`](https://www.npmjs.com/package/@ai-hero/sandcastle).
+
+### How it works
+
+For a given PRD issue number, the runner:
+
+1. Fetches the PRD issue body and extracts the `Design: .kiro/specs/<feature>/design.md` path
+2. Fetches sub-issues, keeps only open ones labeled `ready-for-agent` (configurable) with all blockers closed
+3. Creates/checks out a `feature/prd-<number>` branch
+4. Spins up a `kiro-runner` Docker sandbox (mounts `~/.kiro/` for auth/agents/skills) and runs the one-time setup command
+5. For each unblocked task, in issue-number order:
+   - Runs the **implementer** agent (issue + design context passed inline via prompt — no GitHub creds in the container)
+   - Runs test + type-check
+   - Runs the **reviewer** agent (always, for quality or to fix failures)
+   - Runs test + type-check again as the **final gate**
+   - Halts immediately (`exit 1`) if the final gate fails
+6. Pushes the branch and opens a PR via `gh` on the host when all tasks pass
+
+Agent stdout/stderr is written to `.sandcastle/logs/<issue>-implementer.log` and `<issue>-reviewer.log`; the terminal only shows concise status lines.
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `sandcastle/Dockerfile` | Shared `kiro-runner` image: `node:22-bookworm` + Python3/venv/pip, pnpm (corepack), git, kiro-cli. Built once, reused across repos. |
+| `sandcastle/main.template.ts` | Per-project orchestrator template. Copied to `.sandcastle/main.ts` in a target repo and customised. |
+| `skills/sandcastle-init/SKILL.md` | Skill that scaffolds `.sandcastle/main.ts` into a repo (`sandcastle init`). |
+| `docs/wsl-setup.md` | One-time WSL/Docker/toolchain setup. |
+
+### One-time setup
+
+Full instructions in [docs/wsl-setup.md](docs/wsl-setup.md). Summary:
+
+1. Install WSL (Ubuntu 24.04), plus `git`, `curl`, `jq`, Docker, Node 22 + pnpm, Python 3, `gh` (authenticated), and `kiro-cli` (logged in).
+2. Clone your repos under `~/projects/`.
+3. Build the shared image:
+
+   ```bash
+   docker build -t kiro-runner -f ~/projects/kiro-skills/sandcastle/Dockerfile .
+   ```
+
+4. Verify:
+
+   ```bash
+   docker run --rm --entrypoint bash kiro-runner -c "node --version && pnpm --version && python3 --version && git --version"
+   ```
+
+### Initialise a repo
+
+From inside your target repo in Kiro CLI, run the scaffolding skill:
+
+```
+sandcastle init
+```
+
+This copies `sandcastle/main.template.ts` → `.sandcastle/main.ts`, installs `tsx` and `@ai-hero/sandcastle` as dev deps, adds `.sandcastle/logs/` to `.gitignore`, and fills in the config block from `.kiro/steering/project-config.md`.
+
+Then edit the config block in `.sandcastle/main.ts` to match your project:
+
+```typescript
+const config = {
+  repo: "tedyeates/stockmanager",
+  setup:
+    "cd stockmanagement_bg && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt && cd ../stockmanagement-fe && pnpm install",
+  test: "cd stockmanagement_bg && .venv/bin/pytest && cd ../stockmanagement-fe && pnpm test",
+  typeCheck:
+    "cd stockmanagement_bg && .venv/bin/pyright && cd ../stockmanagement-fe && pnpm tsc --noEmit",
+  timeoutSeconds: 900, // per-agent timeout
+  agentLabel: "ready-for-agent", // only tasks with this label are implemented
+};
+```
+
+### Run
+
+```bash
+# Preview the task plan without executing
+npx tsx .sandcastle/main.ts --prd <number> --dry-run
+
+# Execute: implement all unblocked tasks, then open a PR
+npx tsx .sandcastle/main.ts --prd <number>
+```
+
+**Requirements for the PRD issue:** its body must contain a `Design: .kiro/specs/<feature>/design.md` line so agents receive architectural context, and sub-issues should be linked with blocker relationships so the runner can order them correctly.
+
+**Notes:**
+- Tasks run sequentially on a single feature branch — no task branches, no merge step. This avoids conflicts and eliminates a separate merger agent.
+- Success is decided only by deterministic checks; the runner halts on the first task that fails its final gate, so broken code never cascades.
+- Parallel execution, resume-from-labels, and retry-on-failure are intentionally out of scope (see `.kiro/specs/sandcastle-runner/design.md`).
+
+**Task selection (`agentLabel`):**
+- Only open sub-issues carrying the `agentLabel` (default `ready-for-agent`) are considered. `ready-for-human` and unlabeled tasks are ignored.
+- If a wave has no labeled tasks at all, the runner exits cleanly (`exit 0`, "Nothing to do") without creating a branch or container.
+- If labeled tasks exist but all are blocked by open dependencies, the runner halts (`exit 1`) before spinning up the sandbox.
+- A `ready-for-agent` task blocked by a `ready-for-human` task stays blocked until the human task is done — the runner won't build on top of unfinished human work. It gets picked up on a later run once the blocker is closed.
+
 ## Documentation
 
 - [Process Flow](docs/process-flow.md) — Step-by-step guide through the complete workflow
+- [WSL Setup](docs/wsl-setup.md) — One-time environment setup for the sandcastle runner
 - [Analysis Report](docs/claude-skills-analysis.md) — Full breakdown of the Claude skills codebase and Kiro mapping
 - [Implementation Plan](implementation-plan.md) — How this repo was built
 - [Mapping Reference](skills/convert-claude-skill/MAPPING.md) — Decision tree for Claude → Kiro conversion
