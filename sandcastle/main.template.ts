@@ -8,8 +8,9 @@
 import { createSandbox } from "@ai-hero/sandcastle";
 import { docker } from "@ai-hero/sandcastle/sandboxes/docker";
 import { execSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { homedir } from "node:os";
 
 // ─── Project Config (edit per-repo) ──────────────────────────────────────────
 
@@ -30,9 +31,12 @@ const args = process.argv.slice(2);
 const prdIdx = args.indexOf("--prd");
 const prdNumber = prdIdx !== -1 ? Number(args[prdIdx + 1]) : NaN;
 const dryRun = args.includes("--dry-run");
+// --verbose / -v: stream agent + check output live to the terminal (for testing).
+// Logs are still written to .sandcastle/logs/ regardless.
+const verbose = args.includes("--verbose") || args.includes("-v");
 
 if (isNaN(prdNumber)) {
-  console.error("Usage: npx tsx .sandcastle/main.ts --prd <number> [--dry-run]");
+  console.error("Usage: npx tsx .sandcastle/main.ts --prd <number> [--dry-run] [--verbose|-v]");
   process.exit(1);
 }
 
@@ -50,6 +54,38 @@ function log(msg: string) {
 function elapsed(start: number): string {
   const s = Math.round((Date.now() - start) / 1000);
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m${s % 60}s`;
+}
+
+// Returns an onLine callback that mirrors sandbox output to the terminal when
+// --verbose is set; otherwise undefined (output is only captured to the log).
+function liveStream(prefix: string): ((line: string) => void) | undefined {
+  if (!verbose) return undefined;
+  return (line: string) => process.stdout.write(`  │ ${prefix} ${line}\n`);
+}
+
+// ─── Auth ────────────────────────────────────────────────────────────────────
+
+// Ensures a valid Kiro SSO token exists on the host before launching the sandbox.
+// The token is managed by kiro-cli and cached at ~/.aws/sso/cache/kiro-auth-token.json,
+// which is mounted (writable) into the container so the agent inherits the session.
+// If missing/expired, launches the device flow (prints a URL to open in the host
+// browser). For fully unattended runs, prefer headless API-key auth (KIRO_API_KEY).
+function ensureAuth() {
+  const tokenPath = resolve(homedir(), ".aws", "sso", "cache", "kiro-auth-token.json");
+  try {
+    const token = JSON.parse(readFileSync(tokenPath, "utf-8"));
+    const expiresAt = new Date(token.expiresAt).getTime();
+    const bufferMs = 5 * 60 * 1000; // 5min buffer
+    if (Date.now() < expiresAt - bufferMs) {
+      log("Auth token valid.");
+      return;
+    }
+    log("Auth token expired or expiring soon. Re-authenticating...");
+  } catch {
+    log("No auth token found. Logging in...");
+  }
+  execSync("kiro-cli login --use-device-flow", { stdio: "inherit" });
+  log("Auth refreshed.");
 }
 
 // ─── Task Sourcing (#40) ─────────────────────────────────────────────────────
@@ -110,6 +146,8 @@ function nextUnblocked(issues: SubIssue[], done: Set<number>): SubIssue | undefi
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 async function main() {
+  ensureAuth();
+
   log(`Fetching PRD #${prdNumber}...`);
   const designPath = fetchDesignPath();
   const allIssues = fetchAllSubIssues();
@@ -152,6 +190,15 @@ async function main() {
       imageName: "kiro-runner",
       mounts: [
         { hostPath: "~/.kiro", sandboxPath: "/home/agent/.kiro", readonly: true },
+        { hostPath: "~/.aws", sandboxPath: "/home/agent/.aws" },
+        // Login state lives in data.sqlite3 here — required for kiro-cli to
+        // consider itself authenticated. Read-only avoids lock contention /
+        // state-mixing with a live host session; token refresh uses ~/.aws.
+        {
+          hostPath: "~/.local/share/kiro-cli",
+          sandboxPath: "/home/agent/.local/share/kiro-cli",
+          readonly: true,
+        },
       ],
     }),
     hooks: {
@@ -162,6 +209,20 @@ async function main() {
   });
 
   log("Sandbox ready.");
+
+  // Carry the host's git-ignored .env into the workspace so type-check/test see
+  // required env vars (e.g. framework `$env` imports). The sandbox worktree is
+  // built from the branch, so git-ignored files like .env are never present.
+  // base64 round-trips the contents through exec without shell-escaping issues
+  // or logging secret values. Generic: only runs if the repo has a root .env.
+  const hostEnv = resolve(".env");
+  if (existsSync(hostEnv)) {
+    const b64 = readFileSync(hostEnv).toString("base64");
+    await sandbox.exec(`echo ${b64} | base64 -d > .env`, {
+      cwd: "/home/agent/workspace",
+    });
+    log("Copied host .env into workspace.");
+  }
 
   const logsDir = resolve(".sandcastle", "logs");
   mkdirSync(logsDir, { recursive: true });
@@ -179,7 +240,7 @@ async function main() {
     const implPrompt = buildImplementerPrompt(task, designPath);
     const implResult = await sandbox.exec(
       `kiro-cli chat --no-interactive --trust-all-tools --agent implementer "${escapeShell(implPrompt)}"`,
-      { cwd: "/home/agent/workspace" }
+      { cwd: "/home/agent/workspace", onLine: liveStream(`#${task.number} impl`) }
     );
     writeFileSync(
       resolve(logsDir, `${task.number}-implementer.log`),
@@ -202,7 +263,7 @@ async function main() {
     const reviewPrompt = buildReviewerPrompt(task, reviewerContext, designPath);
     const revResult = await sandbox.exec(
       `kiro-cli chat --no-interactive --trust-all-tools --agent reviewer "${escapeShell(reviewPrompt)}"`,
-      { cwd: "/home/agent/workspace" }
+      { cwd: "/home/agent/workspace", onLine: liveStream(`#${task.number} review`) }
     );
     writeFileSync(
       resolve(logsDir, `${task.number}-reviewer.log`),
@@ -250,14 +311,14 @@ interface CheckResult {
 }
 
 async function runChecks(sandbox: {
-  exec: (cmd: string, opts?: { cwd?: string }) => Promise<{ stdout: string; stderr: string; exitCode: number }>;
+  exec: (cmd: string, opts?: { cwd?: string; onLine?: (line: string) => void }) => Promise<{ stdout: string; stderr: string; exitCode: number }>;
 }): Promise<CheckResult> {
-  const testResult = await sandbox.exec(config.test, { cwd: "/home/agent/workspace" });
+  const testResult = await sandbox.exec(config.test, { cwd: "/home/agent/workspace", onLine: liveStream("test") });
   if (testResult.exitCode !== 0) {
     return { passed: false, output: `TEST FAILED:\n${testResult.stdout}\n${testResult.stderr}` };
   }
 
-  const typeResult = await sandbox.exec(config.typeCheck, { cwd: "/home/agent/workspace" });
+  const typeResult = await sandbox.exec(config.typeCheck, { cwd: "/home/agent/workspace", onLine: liveStream("tsc") });
   if (typeResult.exitCode !== 0) {
     return { passed: false, output: `TYPE-CHECK FAILED:\n${typeResult.stdout}\n${typeResult.stderr}` };
   }

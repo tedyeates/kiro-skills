@@ -22,8 +22,13 @@ Copy-Item -Force .\steering\* ~\.kiro\steering\
 
 ```bash
 cp -r ./skills/* ~/.kiro/skills/
-cp ./agents/*.json ~/.kiro/agents/
+cp ./agents/* ~/.kiro/agents/
 cp ./steering/* ~/.kiro/steering/
 ```
 
 Report what was copied (count of skills, agents, steering files).
+
+Note: `agents/` contains both `*.json` configs and their `*-prompt.md` files
+(referenced via `"prompt": "file://<name>-prompt.md"`). Copy the whole
+directory contents — not just `*.json` — or agents will fail to resolve their
+prompt files.
