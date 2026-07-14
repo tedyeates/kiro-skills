@@ -15,12 +15,14 @@ import { homedir } from "node:os";
 // ─── Project Config (edit per-repo) ──────────────────────────────────────────
 
 const config = {
-  repo: "tedyeates/stockmanager",
-  setup:
-    "cd stockmanagement_bg && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt && cd ../stockmanagement-fe && pnpm install",
-  test: "cd stockmanagement_bg && .venv/bin/pytest && cd ../stockmanagement-fe && pnpm test",
-  typeCheck:
-    "cd stockmanagement_bg && .venv/bin/pyright && cd ../stockmanagement-fe && pnpm tsc --noEmit",
+  repo: "your-org/your-repo",
+  setup: "pnpm install",
+  test: "pnpm test",
+  typeCheck: "pnpm tsc --noEmit",
+  // Host commands — run on host machine (not in sandbox).
+  // Useful for supabase CLI, DB migrations, pgTap tests, etc.
+  hostSetup: "",
+  hostTest: "",
   timeoutSeconds: 900,
   agentLabel: "ready-for-agent", // only tasks carrying this label are implemented
 };
@@ -63,6 +65,21 @@ function liveStream(prefix: string): ((line: string) => void) | undefined {
   return (line: string) => process.stdout.write(`  │ ${prefix} ${line}\n`);
 }
 
+// Runs a command on the host machine (not in the sandbox). Used for things like
+// supabase CLI that need direct access to Docker/host networking.
+function runOnHost(cmd: string, label: string): { exitCode: number; output: string } {
+  log(`[host] ${label}: ${cmd}`);
+  try {
+    const output = execSync(cmd, { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
+    if (verbose) process.stdout.write(`  │ host:${label} ${output}\n`);
+    return { exitCode: 0, output };
+  } catch (err: any) {
+    const output = (err.stdout || "") + "\n" + (err.stderr || "");
+    if (verbose) process.stderr.write(`  │ host:${label} FAILED\n${output}\n`);
+    return { exitCode: err.status ?? 1, output };
+  }
+}
+
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
 // Ensures a valid Kiro SSO token exists on the host before launching the sandbox.
@@ -88,7 +105,7 @@ function ensureAuth() {
   log("Auth refreshed.");
 }
 
-// ─── Task Sourcing (#40) ─────────────────────────────────────────────────────
+// ─── Task Sourcing ───────────────────────────────────────────────────────────
 
 interface SubIssue {
   number: number;
@@ -161,6 +178,40 @@ async function main() {
   for (const t of allIssues) console.log(`  #${t.number} — ${t.title}`);
 
   if (dryRun) {
+    const unblocked: SubIssue[] = [];
+    const blocked: SubIssue[] = [];
+
+    // Fetch closed issues to know which blockers are already done
+    const closedNumbers = new Set<number>();
+    try {
+      const closedRaw = gh(
+        `api repos/${config.repo}/issues/${prdNumber}/sub_issues --jq "[.[] | select(.state == \\"closed\\") | .number]"`
+      );
+      for (const n of JSON.parse(closedRaw || "[]")) closedNumbers.add(n);
+    } catch {
+      // if fetch fails, treat nothing as closed
+    }
+
+    for (const t of allIssues) {
+      if (t.blockedBy.every((b) => closedNumbers.has(b))) {
+        unblocked.push(t);
+      } else {
+        blocked.push(t);
+      }
+    }
+
+    if (unblocked.length > 0) {
+      log(`Unblocked (ready to run):`);
+      for (const t of unblocked) console.log(`  ✓ #${t.number} — ${t.title}`);
+    }
+    if (blocked.length > 0) {
+      log(`Blocked (waiting on dependencies):`);
+      for (const t of blocked) {
+        const deps = t.blockedBy.map((b) => `#${b}`).join(", ");
+        console.log(`  ✗ #${t.number} — ${t.title}  [blocked by: ${deps}]`);
+      }
+    }
+
     log("Dry run — exiting without execution.");
     process.exit(0);
   }
@@ -173,16 +224,10 @@ async function main() {
     process.exit(1);
   }
 
-  // ─── Branch & Sandbox Lifecycle (#41) ────────────────────────────────────
+  // ─── Branch & Sandbox Lifecycle ──────────────────────────────────────────
 
   const branch = `feature/prd-${prdNumber}`;
-
-  try {
-    execSync(`git checkout -b ${branch}`, { stdio: "ignore" });
-  } catch {
-    execSync(`git checkout ${branch}`, { stdio: "ignore" });
-  }
-  log(`On branch: ${branch}`);
+  log(`Target branch: ${branch}`);
 
   await using sandbox = await createSandbox({
     branch,
@@ -210,6 +255,16 @@ async function main() {
 
   log("Sandbox ready.");
 
+  // Run host-side setup (e.g. supabase start) before any tasks.
+  if (config.hostSetup) {
+    const hostSetupResult = runOnHost(config.hostSetup, "setup");
+    if (hostSetupResult.exitCode !== 0) {
+      console.error(`Host setup failed:\n${hostSetupResult.output.split("\n").slice(-20).join("\n")}`);
+      process.exit(1);
+    }
+    log("Host setup complete.");
+  }
+
   // Carry the host's git-ignored .env into the workspace so type-check/test see
   // required env vars (e.g. framework `$env` imports). The sandbox worktree is
   // built from the branch, so git-ignored files like .env are never present.
@@ -227,7 +282,7 @@ async function main() {
   const logsDir = resolve(".sandcastle", "logs");
   mkdirSync(logsDir, { recursive: true });
 
-  // ─── Task Loop with Verification (#42) ──────────────────────────────────
+  // ─── Task Loop with Verification ────────────────────────────────────────
 
   const done = new Set<number>();
   const completedTasks: SubIssue[] = [];
@@ -290,7 +345,7 @@ async function main() {
     process.exit(1);
   }
 
-  // ─── Completion: Push & PR (#43) ────────────────────────────────────────
+  // ─── Completion: Push & PR ──────────────────────────────────────────────
 
   log("All tasks passed. Pushing...");
   execSync(`git push -u origin ${branch}`, { stdio: "inherit" });
@@ -303,7 +358,7 @@ async function main() {
   log(`✓ ${completedTasks.length} tasks completed. PR: ${prUrl}`);
 }
 
-// ─── Verification Logic (#42) ────────────────────────────────────────────────
+// ─── Verification Logic ──────────────────────────────────────────────────────
 
 interface CheckResult {
   passed: boolean;
@@ -321,6 +376,14 @@ async function runChecks(sandbox: {
   const typeResult = await sandbox.exec(config.typeCheck, { cwd: "/home/agent/workspace", onLine: liveStream("tsc") });
   if (typeResult.exitCode !== 0) {
     return { passed: false, output: `TYPE-CHECK FAILED:\n${typeResult.stdout}\n${typeResult.stderr}` };
+  }
+
+  // Host-side test (e.g. supabase pgTap tests)
+  if (config.hostTest) {
+    const hostResult = runOnHost(config.hostTest, "test");
+    if (hostResult.exitCode !== 0) {
+      return { passed: false, output: `HOST TEST FAILED:\n${hostResult.output}` };
+    }
   }
 
   return { passed: true, output: "All checks passed." };
