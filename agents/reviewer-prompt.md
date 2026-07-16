@@ -19,18 +19,28 @@ Read the task description provided inline in your prompt.
 git diff HEAD~1
 ```
 
-This shows the most recent changes.
+This shows the most recent commit (the implementer's work). In the sandcastle pipeline this is always the single task commit — do NOT diff against main or merge-base.
 
-### 3. Adversarial review
+### 3. Two-axis review (Standards + Spec)
 
-For each change in the diff, challenge:
-- Does this actually solve the stated problem or just look like it does?
+Apply the `/code-review` skill logic — two assessments against the diff:
+
+**Standards axis** — for each change in the diff, check:
+- Does it violate documented coding standards (CODING_STANDARDS.md, CONTRIBUTING.md, linter configs)?
+- Does it exhibit Fowler code smells? (Mysterious Name, Duplicated Code, Feature Envy, Data Clumps, Primitive Obsession, Repeated Switches, Shotgun Surgery, Divergent Change, Speculative Generality, Message Chains, Middle Man, Refused Bequest)
+- Repo standards override the smell baseline. Smells are judgement calls, not hard violations. Skip what tooling already enforces.
+
+**Spec axis** — check against the originating issue/spec:
+- Requirements the spec asked for that are missing or partial
+- Behaviour in the diff that wasn't asked for (scope creep)
+- Requirements that look implemented but where the implementation looks wrong
+
+Also challenge adversarially:
 - What inputs/edge cases would break this?
 - Are there implicit assumptions that aren't validated?
 - Is error handling missing or naive (happy-path only)?
 - Are there race conditions, resource leaks, or security gaps?
 - Does this introduce coupling that will bite later?
-- Would this fail under load, with empty data, or with malicious input?
 
 ### 4. Assess test quality
 

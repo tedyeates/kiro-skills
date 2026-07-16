@@ -25,7 +25,7 @@ _Avoid_: checker, validator
 
 ### Verification
 
-**Deterministic Check**: Host-orchestrated `sandbox.exec()` of test and type-check commands after each agent run. The sole authority on pass/fail — agent self-reporting is ignored.
+**Deterministic Check**: `sandbox.exec()` of test and type-check commands after each agent run. The sole authority on pass/fail — agent self-reporting is ignored.
 _Avoid_: trust gate, validation step
 
 **Halt**: The runner stops immediately when deterministic checks fail after the reviewer. No further tasks are processed. Human investigates.

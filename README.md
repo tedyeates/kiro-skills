@@ -53,21 +53,35 @@ The complete workflow from idea to shipped code:
 │  1. grill-with-docs    → Stress-test plan, build shared lang   │
 │     └─ (or grill-me for quick sessions without doc updates)    │
 │  2. prototype          → Throwaway code to answer design Qs    │
-│  3. to-prd             → Synthesize into PRD                   │
-│  4. to-issues          → Break into parallel-ready tasks       │
-│  5. tdd                → Red-green-refactor per task           │
+│  3. to-spec            → Synthesize into spec with seams       │
+│  4. to-tickets         → Break into tracer-bullet tickets      │
+│  5. tdd                → Red-green-refactor per ticket         │
+│     └─ code-review     → Two-axis review before commit         │
 │  6. diagnose           → Fix bugs that arise                   │
 │  7. improve-arch       → Refactor after each wave              │
 ├─────────────────────────────────────────────────────────────────┤
+│  On-ramps:                                                      │
+│  • wayfinder           → Chart huge foggy efforts as a map     │
+│  • research            → Background agent reads primary sources │
+│  • diagnose            → Bug → fix → maybe improve-arch        │
+├─────────────────────────────────────────────────────────────────┤
+│  Autonomous:                                                    │
+│  • sandcastle-init     → Scaffold runner in a repo             │
+│  • sandcastle run      → Agents implement all tickets in Docker│
+├─────────────────────────────────────────────────────────────────┤
 │  Supporting (any time):                                         │
+│  • ask-ted             → Router: which skill fits?             │
+│  • domain-modeling     → Maintain shared language              │
 │  • zoom-out            → Understand unfamiliar code            │
 │  • handoff             → Pass work to another session          │
+│  • teach               → Structured multi-session learning     │
 │  • write-a-skill       → Create new skills                    │
 │  • convert-claude-skill → Port Claude Code skills             │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 See [docs/process-flow.md](docs/process-flow.md) for the detailed step-by-step guide.
+See [docs/skill-linkages.md](docs/skill-linkages.md) for a mermaid diagram of how skills connect.
 
 ## Skills Overview
 
@@ -76,14 +90,19 @@ See [docs/process-flow.md](docs/process-flow.md) for the detailed step-by-step g
 | Skill | Kiro Phase | What It Does |
 |-------|-----------|-------------|
 | [setup](skills/setup/SKILL.md) | Pre-requisite | One-time repo config: issue tracker, triage labels, domain docs layout |
-| [grill-with-docs](skills/grill-with-docs/SKILL.md) | Requirements | Relentless interview that updates CONTEXT.md glossary and creates ADRs inline |
+| [ask-ted](skills/ask-ted/SKILL.md) | Any | Router: which skill or flow fits your situation? |
+| [grill-with-docs](skills/grill-with-docs/SKILL.md) | Requirements | Relentless interview that invokes domain-modeling to maintain CONTEXT.md and ADRs |
 | [grill-me](skills/grill-me/SKILL.md) | Requirements | Lightweight interview without doc updates |
 | [prototype](skills/prototype/SKILL.md) | Design | Throwaway code to answer design questions (terminal app or UI variations) |
-| [to-prd](skills/to-prd/SKILL.md) | Design | Synthesize conversation into PRD with modules, user stories, testing decisions |
-| [to-issues](skills/to-issues/SKILL.md) | Tasks | Break PRD into vertical-slice tasks with wave grouping and interface boundaries |
+| [to-spec](skills/to-spec/SKILL.md) | Design | Synthesize conversation into spec with testing seams, modules, user stories |
+| [to-tickets](skills/to-tickets/SKILL.md) | Tasks | Break spec into tracer-bullet tickets with blocking edges (expand-contract for wide refactors) |
 | [tdd](skills/tdd/SKILL.md) | Implementation | Red-green-refactor loop, one test at a time, never horizontal |
+| [code-review](skills/code-review/SKILL.md) | Implementation | Two-axis review: Standards (conventions + Fowler smells) and Spec (did you build the right thing?) |
 | [diagnose](skills/diagnose/SKILL.md) | Implementation | 6-phase structured debugging with feedback loop construction |
 | [improve-codebase-architecture](skills/improve-codebase-architecture/SKILL.md) | Post-wave | Find shallow modules, propose deepening opportunities |
+| [domain-modeling](skills/domain-modeling/SKILL.md) | Any (model-invoked) | Maintain shared language: challenge terms, stress-test scenarios, update CONTEXT.md |
+| [research](skills/research/SKILL.md) | Any (model-invoked) | Background agent reads primary sources, produces cited markdown |
+| [wayfinder](skills/wayfinder/SKILL.md) | Planning | Chart huge foggy efforts as a decision map, resolve one ticket at a time |
 | [zoom-out](skills/zoom-out/SKILL.md) | Any | Explain code at higher abstraction level using domain vocabulary |
 
 ### Productivity (workflow tools)
@@ -91,6 +110,7 @@ See [docs/process-flow.md](docs/process-flow.md) for the detailed step-by-step g
 | Skill | What It Does |
 |-------|-------------|
 | [handoff](skills/handoff/SKILL.md) | Compact conversation into a handoff doc for another session |
+| [teach](skills/teach/SKILL.md) | Multi-session structured learning with lessons, quizzes, and reference docs |
 | [write-a-skill](skills/write-a-skill/SKILL.md) | Create new skills with proper structure and progressive disclosure |
 
 ### Meta
@@ -191,7 +211,7 @@ The log file lives outside `steering/` so it can grow without bloating the steer
 
 ## Sandcastle Runner
 
-The sandcastle runner autonomously implements a whole PRD's worth of GitHub issues. It runs Kiro agents **sequentially inside a Docker container** and gates success on **deterministic test + type-check results** rather than parsing agent self-reporting. It replaces the older `wave_runner` (Python) with a simpler, more reliable TypeScript orchestrator built on [`@ai-hero/sandcastle`](https://www.npmjs.com/package/@ai-hero/sandcastle).
+The sandcastle runner autonomously implements a whole PRD's worth of GitHub issues. It runs Kiro agents **sequentially inside a Docker container** and gates success on **deterministic test + type-check results** rather than parsing agent self-reporting.
 
 ### How it works
 
@@ -289,6 +309,7 @@ npx tsx .sandcastle/main.ts --prd <number>
 ## Documentation
 
 - [Process Flow](docs/process-flow.md) — Step-by-step guide through the complete workflow
+- [Skill Linkages](docs/skill-linkages.md) — Mermaid diagram of how skills connect and invoke each other
 - [WSL Setup](docs/wsl-setup.md) — One-time environment setup for the sandcastle runner
 - [Analysis Report](docs/claude-skills-analysis.md) — Full breakdown of the Claude skills codebase and Kiro mapping
 - [Implementation Plan](implementation-plan.md) — How this repo was built
