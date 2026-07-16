@@ -3,7 +3,7 @@
   "description": "Independent code reviewer. Reviews diff, assesses test quality, finds issues, runs checks, and fixes problems.",
   "prompt": "file://reviewer-prompt.md",
   "tools": ["read", "write", "shell", "grep", "glob", "code"],
-  "allowedTools": ["read", "write", "shell", "grep", "glob", "code"],
+  "allowedTools": ["read", "write", "grep", "glob", "code"],
   "toolsSettings": {
     "shell": {
       "allowedCommands": [
@@ -18,26 +18,20 @@
         "pnpm build.*",
         "pnpm run.*",
         "pnpm lint.*",
-        "pnpm install.*",
-        "pnpm add.*",
+        "pnpm check.*",
         "npm test.*",
         "npm run.*",
-        "npm install.*",
         "tsc.*",
         "mypy.*",
         "cargo test.*",
         "cargo check.*",
         "cargo build.*",
-        "cargo add.*",
         "pytest.*",
         "python -m pytest.*",
-        "pip install.*",
         ".venv/Scripts/pytest.*",
         ".venv/Scripts/mypy.*",
-        ".venv/Scripts/pip install.*",
         ".venv/bin/pytest.*",
-        ".venv/bin/mypy.*",
-        ".venv/bin/pip install.*"
+        ".venv/bin/mypy.*"
       ],
       "autoAllowReadonly": true,
       "denyByDefault": true

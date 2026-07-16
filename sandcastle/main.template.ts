@@ -23,6 +23,7 @@ const config = {
   // Useful for supabase CLI, DB migrations, pgTap tests, etc.
   hostSetup: "",
   hostTest: "",
+  hostTeardown: "", // always runs on completion or failure (e.g. "supabase stop --no-backup")
   timeoutSeconds: 900,
   agentLabel: "ready-for-agent", // only tasks carrying this label are implemented
 };
@@ -48,6 +49,11 @@ function gh(cmd: string): string {
   return execSync(`gh ${cmd}`, { encoding: "utf-8" }).trim();
 }
 
+/** Run a gh command piping content via stdin (avoids shell-escaping issues with newlines). */
+function ghStdin(cmd: string, input: string): string {
+  return execSync(`gh ${cmd}`, { input, encoding: "utf-8" }).trim();
+}
+
 function log(msg: string) {
   const ts = new Date().toLocaleTimeString("en-GB", { hour12: false });
   console.log(`[${ts}] ${msg}`);
@@ -62,22 +68,10 @@ function elapsed(start: number): string {
 // --verbose is set; otherwise undefined (output is only captured to the log).
 function liveStream(prefix: string): ((line: string) => void) | undefined {
   if (!verbose) return undefined;
-  return (line: string) => process.stdout.write(`  │ ${prefix} ${line}\n`);
-}
-
-// Runs a command on the host machine (not in the sandbox). Used for things like
-// supabase CLI that need direct access to Docker/host networking.
-function runOnHost(cmd: string, label: string): { exitCode: number; output: string } {
-  log(`[host] ${label}: ${cmd}`);
-  try {
-    const output = execSync(cmd, { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
-    if (verbose) process.stdout.write(`  │ host:${label} ${output}\n`);
-    return { exitCode: 0, output };
-  } catch (err: any) {
-    const output = (err.stdout || "") + "\n" + (err.stderr || "");
-    if (verbose) process.stderr.write(`  │ host:${label} FAILED\n${output}\n`);
-    return { exitCode: err.status ?? 1, output };
-  }
+  return (line: string) => {
+    const ts = new Date().toLocaleTimeString("en-GB", { hour12: false });
+    process.stdout.write(`  │ [${ts}] ${prefix} ${line}\n`);
+  };
 }
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
@@ -101,7 +95,12 @@ function ensureAuth() {
   } catch {
     log("No auth token found. Logging in...");
   }
-  execSync("kiro-cli login --use-device-flow", { stdio: "inherit" });
+  try {
+    execSync("kiro-cli login --use-device-flow", { stdio: "inherit" });
+  } catch {
+    // "Already logged in" exits non-zero — that's fine, session is valid.
+    log("Login command failed (likely already authenticated). Continuing.");
+  }
   log("Auth refreshed.");
 }
 
@@ -217,7 +216,18 @@ async function main() {
   }
 
   // Halt before spinning up the sandbox if nothing is actionable right now.
-  if (!nextUnblocked(allIssues, new Set<number>())) {
+  // Must consider already-closed sub-issues as satisfied dependencies.
+  const closedNumbers = new Set<number>();
+  try {
+    const closedRaw = gh(
+      `api repos/${config.repo}/issues/${prdNumber}/sub_issues --jq "[.[] | select(.state == \\"closed\\") | .number]"`
+    );
+    for (const n of JSON.parse(closedRaw || "[]")) closedNumbers.add(n);
+  } catch {
+    // if fetch fails, proceed — worst case tasks stay blocked
+  }
+
+  if (!nextUnblocked(allIssues, closedNumbers)) {
     log(
       `No unblocked '${config.agentLabel}' tasks — all remaining tasks are blocked by open dependencies. Halting.`
     );
@@ -255,16 +265,6 @@ async function main() {
 
   log("Sandbox ready.");
 
-  // Run host-side setup (e.g. supabase start) before any tasks.
-  if (config.hostSetup) {
-    const hostSetupResult = runOnHost(config.hostSetup, "setup");
-    if (hostSetupResult.exitCode !== 0) {
-      console.error(`Host setup failed:\n${hostSetupResult.output.split("\n").slice(-20).join("\n")}`);
-      process.exit(1);
-    }
-    log("Host setup complete.");
-  }
-
   // Carry the host's git-ignored .env into the workspace so type-check/test see
   // required env vars (e.g. framework `$env` imports). The sandbox worktree is
   // built from the branch, so git-ignored files like .env are never present.
@@ -282,80 +282,103 @@ async function main() {
   const logsDir = resolve(".sandcastle", "logs");
   mkdirSync(logsDir, { recursive: true });
 
-  // ─── Task Loop with Verification ────────────────────────────────────────
-
-  const done = new Set<number>();
-  const completedTasks: SubIssue[] = [];
-  let task: SubIssue | undefined;
-
-  while ((task = nextUnblocked(allIssues, done))) {
-    const taskStart = Date.now();
-    log(`[task #${task.number}] implementing...`);
-
-    const implPrompt = buildImplementerPrompt(task, designPath);
-    const implResult = await sandbox.exec(
-      `kiro-cli chat --no-interactive --trust-all-tools --agent implementer "${escapeShell(implPrompt)}"`,
-      { cwd: "/home/agent/workspace", onLine: liveStream(`#${task.number} impl`) }
-    );
-    writeFileSync(
-      resolve(logsDir, `${task.number}-implementer.log`),
-      implResult.stdout + "\n" + implResult.stderr
-    );
-
-    // Post-implementer checks
-    log(`[task #${task.number}] verifying...`);
-    const postImpl = await runChecks(sandbox);
-
-    let reviewerContext: string;
-    if (postImpl.passed) {
-      reviewerContext = "Implementer checks passed. Review for code quality.";
-    } else {
-      reviewerContext = `Implementer checks FAILED:\n${postImpl.output.slice(-2000)}`;
-    }
-
-    // Reviewer always runs
-    log(`[task #${task.number}] reviewing...`);
-    const reviewPrompt = buildReviewerPrompt(task, reviewerContext, designPath);
-    const revResult = await sandbox.exec(
-      `kiro-cli chat --no-interactive --trust-all-tools --agent reviewer "${escapeShell(reviewPrompt)}"`,
-      { cwd: "/home/agent/workspace", onLine: liveStream(`#${task.number} review`) }
-    );
-    writeFileSync(
-      resolve(logsDir, `${task.number}-reviewer.log`),
-      revResult.stdout + "\n" + revResult.stderr
-    );
-
-    // Final gate
-    log(`[task #${task.number}] final checks...`);
-    const finalChecks = await runChecks(sandbox);
-
-    if (!finalChecks.passed) {
-      const tail = finalChecks.output.split("\n").slice(-30).join("\n");
-      console.error(`\n[task #${task.number}] FAILED final checks:\n${tail}`);
-      process.exit(1);
-    }
-
-    done.add(task.number);
-    completedTasks.push(task);
-    log(`[task #${task.number}] ✓ passed (${elapsed(taskStart)})`);
+  // Host-side setup: runs on the HOST against the bind-mounted worktree
+  // (sandbox.worktreePath), where the host Docker daemon is reachable. Once.
+  if (config.hostSetup) {
+    log(`Host setup: ${config.hostSetup}`);
+    execSync(config.hostSetup, { cwd: sandbox.worktreePath, stdio: "inherit" });
   }
 
-  if (completedTasks.length === 0) {
-    log("No tasks could be unblocked. Check dependency graph.");
-    process.exit(1);
+  try {
+    // ─── Task Loop with Verification ────────────────────────────────────────
+
+    // Seed `done` with sub-issues already closed before this run, so that
+    // dependency checks like `blockedBy.every(b => done.has(b))` correctly
+    // recognise pre-completed blockers as satisfied.
+    const done = new Set<number>();
+    try {
+      const closedRaw = gh(
+        `api repos/${config.repo}/issues/${prdNumber}/sub_issues --jq "[.[] | select(.state == \\"closed\\") | .number]"`
+      );
+      for (const n of JSON.parse(closedRaw || "[]")) done.add(n);
+    } catch {
+      // if fetch fails, proceed with empty set — worst case tasks stay blocked
+    }
+
+    const completedTasks: SubIssue[] = [];
+    let task: SubIssue | undefined;
+
+    while ((task = nextUnblocked(allIssues, done))) {
+      const taskStart = Date.now();
+      log(`[task #${task.number}] implementing...`);
+
+      const implPrompt = buildImplementerPrompt(task, designPath);
+      const implResult = await sandbox.exec(
+        `kiro-cli chat --no-interactive --agent implementer "${escapeShell(implPrompt)}"`,
+        { cwd: "/home/agent/workspace", onLine: liveStream(`#${task.number} impl`) }
+      );
+      writeFileSync(
+        resolve(logsDir, `${task.number}-implementer.log`),
+        implResult.stdout + "\n" + implResult.stderr
+      );
+
+      // Post-implementer checks
+      log(`[task #${task.number}] verifying...`);
+      const postImpl = await runChecks(sandbox, sandbox.worktreePath);
+
+      let reviewerContext: string;
+      if (postImpl.passed) {
+        reviewerContext = "Implementer checks passed. Review for code quality.";
+      } else {
+        reviewerContext = `Implementer checks FAILED:\n${postImpl.output.slice(-2000)}`;
+      }
+
+      // Reviewer always runs
+      log(`[task #${task.number}] reviewing...`);
+      const reviewPrompt = buildReviewerPrompt(task, reviewerContext, designPath);
+      const revResult = await sandbox.exec(
+        `kiro-cli chat --no-interactive --agent reviewer "${escapeShell(reviewPrompt)}"`,
+        { cwd: "/home/agent/workspace", onLine: liveStream(`#${task.number} review`) }
+      );
+      writeFileSync(
+        resolve(logsDir, `${task.number}-reviewer.log`),
+        revResult.stdout + "\n" + revResult.stderr
+      );
+
+      // Final gate
+      log(`[task #${task.number}] final checks...`);
+      const finalChecks = await runChecks(sandbox, sandbox.worktreePath);
+
+      if (!finalChecks.passed) {
+        const tail = finalChecks.output.split("\n").slice(-30).join("\n");
+        throw new Error(`[task #${task.number}] FAILED final checks:\n${tail}`);
+      }
+
+      done.add(task.number);
+      completedTasks.push(task);
+      gh(`issue close ${task.number} --repo ${config.repo}`);
+      checkpointPR(branch, prdNumber, task);
+      log(`[task #${task.number}] ✓ closed & pushed (${elapsed(taskStart)})`);
+    }
+
+    if (completedTasks.length === 0) {
+      throw new Error("No tasks could be unblocked. Check dependency graph.");
+    }
+
+    // ─── Completion ──────────────────────────────────────────────────────────
+
+    log(`✓ ${completedTasks.length} tasks completed. PR pushed incrementally.`);
+  } finally {
+    // Host teardown always runs — on success, task failure, or check failure.
+    if (config.hostTeardown) {
+      log(`Host teardown: ${config.hostTeardown}`);
+      try {
+        execSync(config.hostTeardown, { cwd: sandbox.worktreePath, stdio: "ignore" });
+      } catch {
+        // best-effort teardown; don't mask the original error
+      }
+    }
   }
-
-  // ─── Completion: Push & PR ──────────────────────────────────────────────
-
-  log("All tasks passed. Pushing...");
-  execSync(`git push -u origin ${branch}`, { stdio: "inherit" });
-
-  const prBody = buildPrBody(completedTasks, prdNumber);
-  const prUrl = gh(
-    `pr create --base main --head ${branch} --title "feat: PRD #${prdNumber}" --body "${escapeShell(prBody)}"`
-  );
-
-  log(`✓ ${completedTasks.length} tasks completed. PR: ${prUrl}`);
 }
 
 // ─── Verification Logic ──────────────────────────────────────────────────────
@@ -365,9 +388,28 @@ interface CheckResult {
   output: string;
 }
 
-async function runChecks(sandbox: {
-  exec: (cmd: string, opts?: { cwd?: string; onLine?: (line: string) => void }) => Promise<{ stdout: string; stderr: string; exitCode: number }>;
-}): Promise<CheckResult> {
+// Run a command on the HOST (not the sandbox), capturing output. Used for
+// steps that need the host Docker daemon (e.g. Supabase) against the
+// bind-mounted worktree. Returns exit code rather than throwing.
+function execHost(cmd: string, cwd: string): { exitCode: number; output: string } {
+  try {
+    const out = execSync(cmd, { cwd, encoding: "utf-8" });
+    if (verbose) process.stdout.write(out);
+    return { exitCode: 0, output: out };
+  } catch (err) {
+    const e = err as { status?: number; stdout?: string; stderr?: string };
+    const output = `${e.stdout ?? ""}\n${e.stderr ?? ""}`;
+    if (verbose) process.stdout.write(output);
+    return { exitCode: e.status ?? 1, output };
+  }
+}
+
+async function runChecks(
+  sandbox: {
+    exec: (cmd: string, opts?: { cwd?: string; onLine?: (line: string) => void }) => Promise<{ stdout: string; stderr: string; exitCode: number }>;
+  },
+  hostCwd: string
+): Promise<CheckResult> {
   const testResult = await sandbox.exec(config.test, { cwd: "/home/agent/workspace", onLine: liveStream("test") });
   if (testResult.exitCode !== 0) {
     return { passed: false, output: `TEST FAILED:\n${testResult.stdout}\n${testResult.stderr}` };
@@ -378,15 +420,55 @@ async function runChecks(sandbox: {
     return { passed: false, output: `TYPE-CHECK FAILED:\n${typeResult.stdout}\n${typeResult.stderr}` };
   }
 
-  // Host-side test (e.g. supabase pgTap tests)
+  // Host-side tests (e.g. pgTAP via `supabase test db`) — run on the host
+  // against the bind-mounted worktree. Skipped when hostTest is "".
   if (config.hostTest) {
-    const hostResult = runOnHost(config.hostTest, "test");
+    const hostResult = execHost(config.hostTest, hostCwd);
     if (hostResult.exitCode !== 0) {
-      return { passed: false, output: `HOST TEST FAILED:\n${hostResult.output}` };
+      return { passed: false, output: `HOST TEST FAILED (${config.hostTest}):\n${hostResult.output}` };
     }
   }
 
   return { passed: true, output: "All checks passed." };
+}
+
+// ─── PR Checkpoint ───────────────────────────────────────────────────────────
+
+function checkpointPR(branch: string, prd: number, closedIssue: SubIssue) {
+  execSync(`git push -u origin ${branch}`, { stdio: "inherit" });
+
+  const prNumber = gh(
+    `pr list --head ${branch} --json number --jq ".[0].number"`
+  );
+
+  const entry = `- Closes #${closedIssue.number} — ${closedIssue.title}`;
+
+  if (prNumber) {
+    // Append to existing PR body
+    const existingBody = gh(`pr view ${prNumber} --json body --jq ".body"`);
+    const updatedBody = existingBody + "\n" + entry;
+    ghStdin(`pr edit ${prNumber} --body-file -`, updatedBody);
+    log(`PR #${prNumber} updated with #${closedIssue.number}.`);
+  } else {
+    // Create draft PR — title set once
+    const body = [
+      "## Summary",
+      "",
+      `Implements PRD #${prd}`,
+      "",
+      "## Tasks completed",
+      "",
+      entry,
+      "",
+      "---",
+      `Parent: #${prd}`,
+    ].join("\n");
+    const url = ghStdin(
+      `pr create --base main --head ${branch} --title "feat: PRD #${prd}" --body-file - --draft`,
+      body
+    );
+    log(`Draft PR created: ${url}`);
+  }
 }
 
 // ─── Prompt Builders ─────────────────────────────────────────────────────────
@@ -406,13 +488,6 @@ function buildReviewerPrompt(task: SubIssue, context: string, designPath?: strin
   prompt += `## Check commands\n- Test: ${config.test}\n- Type-check: ${config.typeCheck}\n`;
   if (designPath) prompt += `\n## Design context\nRead ${designPath} for architectural decisions.\n`;
   return prompt;
-}
-
-function buildPrBody(tasks: SubIssue[], prd: number): string {
-  let body = `## Summary\n\nImplements PRD #${prd}\n\n## Tasks completed\n\n`;
-  for (const t of tasks) body += `- Closes #${t.number} — ${t.title}\n`;
-  body += `\n---\nParent: #${prd}`;
-  return body;
 }
 
 function escapeShell(s: string): string {
