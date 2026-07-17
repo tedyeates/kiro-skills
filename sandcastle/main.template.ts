@@ -5,12 +5,12 @@
  * Run: npx tsx .sandcastle/main.ts --prd <number> [--dry-run]
  */
 
+import "dotenv/config";
 import { createSandbox } from "@ai-hero/sandcastle";
 import { docker } from "@ai-hero/sandcastle/sandboxes/docker";
 import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { homedir } from "node:os";
 
 // ─── Project Config (edit per-repo) ──────────────────────────────────────────
 
@@ -76,32 +76,17 @@ function liveStream(prefix: string): ((line: string) => void) | undefined {
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
-// Ensures a valid Kiro SSO token exists on the host before launching the sandbox.
-// The token is managed by kiro-cli and cached at ~/.aws/sso/cache/kiro-auth-token.json,
-// which is mounted (writable) into the container so the agent inherits the session.
-// If missing/expired, launches the device flow (prints a URL to open in the host
-// browser). For fully unattended runs, prefer headless API-key auth (KIRO_API_KEY).
 function ensureAuth() {
-  const tokenPath = resolve(homedir(), ".aws", "sso", "cache", "kiro-auth-token.json");
-  try {
-    const token = JSON.parse(readFileSync(tokenPath, "utf-8"));
-    const expiresAt = new Date(token.expiresAt).getTime();
-    const bufferMs = 5 * 60 * 1000; // 5min buffer
-    if (Date.now() < expiresAt - bufferMs) {
-      log("Auth token valid.");
-      return;
-    }
-    log("Auth token expired or expiring soon. Re-authenticating...");
-  } catch {
-    log("No auth token found. Logging in...");
+  // Headless mode: KIRO_API_KEY env var is passed into the sandbox container.
+  // When set, kiro-cli skips browser-based login entirely.
+  if (!process.env.KIRO_API_KEY) {
+    console.error(
+      "ERROR: KIRO_API_KEY not set. Add it to .env or export it.\n" +
+        "Generate one at https://app.kiro.dev → API Keys."
+    );
+    process.exit(1);
   }
-  try {
-    execSync("kiro-cli login --use-device-flow", { stdio: "inherit" });
-  } catch {
-    // "Already logged in" exits non-zero — that's fine, session is valid.
-    log("Login command failed (likely already authenticated). Continuing.");
-  }
-  log("Auth refreshed.");
+  log("KIRO_API_KEY set — headless auth enabled.");
 }
 
 // ─── Task Sourcing ───────────────────────────────────────────────────────────
@@ -243,17 +228,12 @@ async function main() {
     branch,
     sandbox: docker({
       imageName: "kiro-runner",
+      env: {
+        KIRO_API_KEY: process.env.KIRO_API_KEY!,
+      },
       mounts: [
         { hostPath: "~/.kiro", sandboxPath: "/home/agent/.kiro", readonly: true },
         { hostPath: "~/.aws", sandboxPath: "/home/agent/.aws" },
-        // Login state lives in data.sqlite3 here — required for kiro-cli to
-        // consider itself authenticated. Read-only avoids lock contention /
-        // state-mixing with a live host session; token refresh uses ~/.aws.
-        {
-          hostPath: "~/.local/share/kiro-cli",
-          sandboxPath: "/home/agent/.local/share/kiro-cli",
-          readonly: true,
-        },
       ],
     }),
     hooks: {
