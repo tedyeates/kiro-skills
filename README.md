@@ -104,6 +104,7 @@ See [docs/skill-linkages.md](docs/skill-linkages.md) for a mermaid diagram of ho
 | [research](skills/research/SKILL.md) | Any (model-invoked) | Background agent reads primary sources, produces cited markdown |
 | [wayfinder](skills/wayfinder/SKILL.md) | Planning | Chart huge foggy efforts as a decision map, resolve one ticket at a time |
 | [zoom-out](skills/zoom-out/SKILL.md) | Any | Explain code at higher abstraction level using domain vocabulary |
+| [language-guide](skills/language-guide/SKILL.md) | Any (model-invoked) | Index of language/framework guides for patterns agents get wrong; consulted by tdd and code-review |
 
 ### Productivity (workflow tools)
 

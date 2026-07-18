@@ -39,11 +39,16 @@ RIGHT (vertical):
   RED→GREEN: test3→impl3
 ```
 
+## Language Guides
+
+Before writing code, consult the `language-guide` skill for the project's tech stack. If an applicable guide exists, **read it first** and follow those patterns throughout implementation.
+
 ## Workflow
 
 ### 1. Planning
 
 Before writing any code:
+- [ ] Check for applicable language guides and read them
 - [ ] Confirm with user what interface changes are needed
 - [ ] Confirm which behaviors to test (prioritize — you can't test everything)
 - [ ] Identify deep module opportunities (small interface, deep implementation)

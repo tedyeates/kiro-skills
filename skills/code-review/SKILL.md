@@ -33,6 +33,8 @@ Look for the originating spec in this order:
 
 Look for coding standards docs in the repo: `CODING_STANDARDS.md`, `CONTRIBUTING.md`, `.kiro/steering/` files, linter configs.
 
+**Language guides**: Consult the `language-guide` skill for the project's tech stack. If an applicable guide exists, include its patterns as additional standards for the Standards axis review.
+
 On top of repo-documented standards, always carry the **smell baseline** (Fowler, _Refactoring_ ch.3):
 
 - **Mysterious Name** — name doesn't reveal what it does → rename

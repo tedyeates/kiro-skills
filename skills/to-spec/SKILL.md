@@ -96,6 +96,60 @@ A LONG, numbered list of user stories:
 
 Cover ALL aspects of the feature. Be exhaustive.
 
+## Personas & Roles
+
+If the feature involves role-based access or multiple actor types, add a Personas section. Table format — one row per role, columns for allowed actions:
+
+| Role | Can view | Can create | Can edit | Can delete | Notes |
+|------|----------|-----------|---------|-----------|-------|
+| {role} | {scope} | {scope} | {scope} | {scope} | {constraints} |
+
+Tailor columns to the domain (e.g., "Can approve", "Can assign"). Skip this section if the feature has a single undifferentiated user role.
+
+## Diagrams
+
+Include diagrams where they clarify relationships or flows that prose alone would obscure. Use Mermaid syntax. Only include diagram types that add value — not every spec needs all of these.
+
+**ER Diagram** — when the feature introduces or modifies data relationships. Include all columns with types:
+
+```mermaid
+erDiagram
+    ENTITY_A {
+        uuid id PK
+        text name
+        timestamp created_at
+    }
+    ENTITY_B {
+        uuid id PK
+        uuid entity_a_id FK
+        text status
+    }
+    ENTITY_A ||--o{ ENTITY_B : "has"
+```
+
+**State Diagram** — when entities have lifecycle states:
+
+```mermaid
+stateDiagram-v2
+    [*] --> State1
+    State1 --> State2 : event
+```
+
+**Flow Chart** — when a process has conditional branching or multiple actors:
+
+```mermaid
+flowchart TD
+    A[Start] --> B{Decision}
+    B -->|Yes| C[Action]
+    B -->|No| D[Other]
+```
+
+Rules:
+- Prefer tables over diagrams when the information is simple enumeration
+- ER diagrams should include all columns with their types and PK/FK markers
+- State diagrams should show the happy path and key error states
+- Flow charts should be high-level (5-10 nodes max) — detail goes in prose
+
 ## Testing Seams
 
 The seams at which this feature will be tested, with rationale:
