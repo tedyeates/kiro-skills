@@ -85,11 +85,12 @@ Process in order: security → test → design. For each item:
 
 #### 5a. Present plan
 
-Show the user:
-- The original comment
-- Proposed fix approach
-- Proposed prevention measure (new/tweaked test, correction entry, or flagged skill update)
-- Whether TDD is needed (missing coverage) or direct fix (already covered)
+Show the user **all four parts** — do NOT present a plan missing the prevention line:
+
+1. **Comment:** The original review comment (quoted)
+2. **Fix:** Proposed code/config change
+3. **Prevention:** Exactly one of: new/tweaked test, `.kiro/corrections.md` entry, or flagged skill update. State which and why. This is mandatory — never skip it, even for discussion items.
+4. **Approach:** TDD (missing coverage → write test first) or direct fix (already covered → explain which test covers it)
 
 **Wait for user confirmation before implementing.**
 
@@ -168,7 +169,7 @@ When reaching an item triaged as "needs discussion":
 2. Offer: "Grill on it now, or skip for later?"
 3. If grilling: invoke `/grill-with-docs` inline — domain terms may sharpen, ADRs may emerge
 4. If user states the spec should change: user drives the spec update (skill doesn't propose spec changes unprompted)
-5. After resolution: implement the agreed fix following the same 5b–5e flow
+5. After resolution: present a full 5a plan (including prevention) then implement via 5b–5e
 
 ### 7. Final gate
 
