@@ -96,13 +96,22 @@ Show the user **all four parts** — do NOT present a plan missing the preventio
 1. **Comment:** The original review comment (quoted)
 2. **Fix:** Proposed code/config change
 3. **Prevention:** Exactly one of: new/tweaked test, `.kiro/corrections.md` entry, or flagged skill update. State which and why. This is mandatory — never skip it, even for discussion items.
-4. **Approach:** TDD (missing coverage → write test first) or direct fix (already covered → explain which test covers it)
+4. **Approach:** One of three modes:
+   - **Add tests to existing code** — comment asks for test coverage on code that already exists and functions → write tests that verify current behaviour, run them. No red-green-refactor cycle (TDD is for building new functionality test-first, not for retroactively covering existing code).
+   - **TDD** — the fix requires *new code that doesn't exist yet* → write failing test first, then implement.
+   - **Direct fix** — fix is already covered by existing tests → explain which test covers it.
 
 **Wait for user confirmation before implementing.**
 
 #### 5b. Implement
 
-**If TDD needed** (missing coverage):
+**If adding tests to existing code** (coverage requested, code already exists):
+1. Read the code under test — understand its current behaviour
+2. Write tests covering core behaviour (rendering, interactions, state changes) — not exhaustive internals
+3. Run tests — if they pass, done. If they fail, the code has a bug: present the failure to user before fixing
+4. Add prevention measure
+
+**If TDD needed** (fix requires new code):
 1. Write test that should pass if the fix is correct
 2. Run test — confirm RED
 3. Implement the fix — confirm GREEN
