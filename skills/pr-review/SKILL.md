@@ -9,7 +9,7 @@ Orchestrator skill that reviews an open PR across three axes:
 2. **Test Quality** — Beck/ISTQB/SMURF checklist (`pr-test-quality` agent)
 3. **Design Conformance** — spec section comparison (`pr-design-conformance` agent)
 
-Posts results as GitHub PR reviews with inline comments, severity-based event types, and clean-pass notifications.
+Posts results as GitHub PR reviews with inline comments.
 
 ## Invocation
 
@@ -29,21 +29,35 @@ Posts results as GitHub PR reviews with inline comments, severity-based event ty
 
 Read `.kiro/steering/project-config.md` to extract `{owner}/{repo}`.
 
-### 2. Fetch PR metadata and diff
+### 2. Checkout PR branch
+
+Ensure the PR branch is checked out locally so sub-agents can read files and run `git diff`:
 
 ```bash
-gh api repos/{owner}/{repo}/pulls/{pr_number} --template '{{.body}}'
+gh pr checkout {pr_number}
 ```
 
-Fetch file-level diff with line positions (NOT `gh pr diff` which lacks line mapping):
+Store the base branch ref for sub-agents:
+
+```bash
+gh api repos/{owner}/{repo}/pulls/{pr_number} --jq '.base.ref'
+```
+
+### 3. Fetch PR metadata and file list
+
+```bash
+gh api repos/{owner}/{repo}/pulls/{pr_number} --jq '{body: .body, base: .base.ref, head: .head.ref}'
+```
+
+Fetch the list of changed files (needed for position computation in step 7):
 
 ```bash
 gh api repos/{owner}/{repo}/pulls/{pr_number}/files --paginate
 ```
 
-This returns an array of objects with `filename`, `patch`, `additions`, `deletions`, `status`. Reconstruct a unified diff from the patches for each file.
+This returns an array of objects with `filename`, `patch`, `additions`, `deletions`, `status`. Keep this data for position mapping.
 
-### 3. Resolve specs
+### 4. Resolve specs
 
 Three specs to locate:
 
@@ -55,13 +69,13 @@ Three specs to locate:
 
 **security.md** — look for `.kiro/specs/security.md`:
 - If exists → read it
-- If not → bootstrap (see step 3b)
+- If not → bootstrap (see step 4b)
 
 **testing.md** — look for `.kiro/specs/testing.md`:
 - If exists → read it
-- If not → bootstrap (see step 3b)
+- If not → bootstrap (see step 4b)
 
-### 3b. Bootstrap missing project specs
+### 4b. Bootstrap missing project specs
 
 If `security.md` or `testing.md` don't exist, create minimal versions by scanning the codebase:
 
@@ -93,7 +107,9 @@ Both files use this template:
 |------|---------|
 ```
 
-### 4. Spawn sub-agents in parallel
+### 5. Spawn sub-agents in parallel
+
+Sub-agents read files from disk and run `git diff` themselves. Do NOT pass inline diffs — pass only the context they need to orient: PR number, base branch, file list, and the relevant spec.
 
 Use the subagent tool with all three stages having no `depends_on` (parallel execution):
 
@@ -104,25 +120,25 @@ Use the subagent tool with all three stages having no `depends_on` (parallel exe
     {
       "name": "security",
       "role": "pr-security",
-      "prompt_template": "Review this PR diff for security issues.\n\nPR: {owner}/{repo}#{pr_number}\n\nDIFF:\n{diff}\n\nSECURITY SPEC:\n{security_md_contents}\n\nReturn JSON: { summary: string, comments: [{ path: string, line?: number, body: string }] }"
+      "prompt_template": "Review PR #{pr_number} for security issues.\n\nRepo: {owner}/{repo}\nBase branch: {base_branch}\nChanged files:\n{file_list}\n\nRun `git diff {base_branch}...HEAD` to see the diff. Read source files as needed.\n\nSECURITY SPEC:\n{security_md_contents}\n\nReturn JSON: { summary: string, comments: [{ path: string, line?: number, body: string }] }"
     },
     {
       "name": "test-quality",
       "role": "pr-test-quality",
-      "prompt_template": "Review this PR diff for test quality issues.\n\nPR: {owner}/{repo}#{pr_number}\n\nDIFF:\n{diff}\n\nTESTING SPEC:\n{testing_md_contents}\n\nReturn JSON: { summary: string, comments: [{ path: string, line?: number, body: string }] }"
+      "prompt_template": "Review PR #{pr_number} for test quality issues.\n\nRepo: {owner}/{repo}\nBase branch: {base_branch}\nChanged files:\n{file_list}\n\nRun `git diff {base_branch}...HEAD` to see the diff. Read source files as needed.\n\nTESTING SPEC:\n{testing_md_contents}\n\nReturn JSON: { summary: string, comments: [{ path: string, line?: number, body: string }] }"
     },
     {
       "name": "design-conformance",
       "role": "pr-design-conformance",
-      "prompt_template": "Compare this PR diff against the design spec and report deviations.\n\nPR: {owner}/{repo}#{pr_number}\n\nDIFF:\n{diff}\n\nDESIGN SPEC:\n{design_md_contents}\n\nReturn JSON: { summary: string, comments: [{ path: string, line?: number, body: string }] }"
+      "prompt_template": "Compare PR #{pr_number} against the design spec and report deviations.\n\nRepo: {owner}/{repo}\nBase branch: {base_branch}\nChanged files:\n{file_list}\n\nRun `git diff {base_branch}...HEAD` to see the diff. Read source files as needed.\n\nDESIGN SPEC:\n{design_md_contents}\n\nReturn JSON: { summary: string, comments: [{ path: string, line?: number, body: string }] }"
     }
   ]
 }
 ```
 
-If design.md was not found (step 3), omit the `design-conformance` stage entirely.
+If design.md was not found (step 4), omit the `design-conformance` stage entirely.
 
-### 5. Collect and transform results
+### 6. Collect and transform results
 
 Each sub-agent returns:
 
@@ -139,11 +155,37 @@ interface Comment {
 }
 ```
 
-Parse each result's JSON. For each sub-agent, determine the highest severity from its comments:
-- Parse severity from `body` prefix: `**[CRITICAL]**`, `**[HIGH]**`, `**[MEDIUM]**`, `**[LOW]**`
-- Map to event type (see step 6)
+Parse each result's JSON.
 
-### 6. Post GitHub reviews
+### 7. Post GitHub reviews
+
+#### 7a. Clean up pending reviews
+
+Before posting, delete any stale PENDING reviews owned by the current user:
+
+```bash
+CURRENT_USER=$(gh api /user --jq '.login')
+PENDING_IDS=$(gh api repos/{owner}/{repo}/pulls/{pr_number}/reviews \
+  --jq "[.[] | select(.state == \"PENDING\" and .user.login == \"$CURRENT_USER\")] | .[].id")
+
+for id in $PENDING_IDS; do
+  gh api repos/{owner}/{repo}/pulls/{pr_number}/reviews/$id --method DELETE
+done
+```
+
+#### 7b. Compute positions
+
+Sub-agents return `line` (line number in the new file version). The GitHub Reviews API requires `position` — a 1-indexed offset within the diff hunk counting from the `@@` line.
+
+For each comment with a `line` value, compute `position` from the patch data fetched in step 3:
+1. Find the file's `patch` string from the files array
+2. Walk through the patch lines, tracking the current new-file line number from the `@@` header (the `+` start value)
+3. For each line that is context (` `) or addition (`+`), increment the new-file line counter
+4. When the new-file line counter matches the comment's `line`, the current 1-indexed offset from the `@@` is the `position`
+
+If a comment has no `line` (file-level finding), use `position: 1`.
+
+#### 7c. Post reviews
 
 For each sub-agent result, post according to its findings:
 
@@ -154,28 +196,18 @@ Transform to GitHub Review API payload:
 ```json
 {
   "body": "{summary}",
-  "event": "{REQUEST_CHANGES|COMMENT}",
+  "event": "COMMENT",
   "comments": [
     {
       "path": "src/file.ts",
       "body": "**[HIGH]** Issue description...",
-      "line": 42,
-      "side": "RIGHT"
+      "position": 12
     }
   ]
 }
 ```
 
-Severity → event mapping:
-
-| Highest severity in findings | `event` value |
-|------------------------------|---------------|
-| Critical or High             | `REQUEST_CHANGES` |
-| Medium or Low only           | `COMMENT` |
-
-Comment transformation rules:
-- Comment with `line` → include `line` and `side: "RIGHT"` (new file side)
-- Comment without `line` → include `subject_type: "file"` (file-level comment)
+All reviews use `event: "COMMENT"` — the `REQUEST_CHANGES` event is not used because it fails when the reviewer is the PR author (common in solo projects and bot-less setups).
 
 Post via:
 ```bash
@@ -195,7 +227,7 @@ gh pr comment {pr_number} --repo {owner}/{repo} \
 
 Axis names: "Security", "Test Quality", "Design Conformance"
 
-### 7. Report summary
+### 8. Report summary
 
 Print a final summary to the user:
 
@@ -212,9 +244,7 @@ Reviews posted to: https://github.com/{owner}/{repo}/pull/{pr_number}
 
 ## Edge Cases
 
-**Large PRs:** If the diff is very large, include all files but note in the sub-agent prompt that the review should focus on security/test/design-critical paths rather than mechanical changes.
-
-**Binary files:** Exclude binary files from the diff passed to sub-agents.
+**Binary files:** Exclude binary files from the file list passed to sub-agents.
 
 **Draft PRs:** Review normally — drafts benefit from early feedback.
 

@@ -1,8 +1,17 @@
 {
   "name": "pr-design-conformance",
-  "description": "Design conformance review sub-agent. Pure analysis — compares diff against design spec, no filesystem access.",
+  "description": "Design conformance review sub-agent. Compares PR changes against design spec, reads source files directly.",
   "prompt": "file://pr-design-conformance-prompt.md",
-  "tools": ["code"],
-  "allowedTools": ["code"],
+  "tools": ["read", "grep", "glob", "code", "shell"],
+  "allowedTools": ["read", "grep", "glob", "code"],
+  "toolsSettings": {
+    "shell": {
+      "allowedCommands": [
+        "git diff.*"
+      ],
+      "autoAllowReadonly": true,
+      "denyByDefault": true
+    }
+  },
   "resources": []
 }
