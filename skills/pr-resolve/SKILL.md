@@ -85,6 +85,12 @@ Process in order: security → test → design. For each item:
 
 #### 5a. Present plan
 
+**When the fix involves writing or modifying tests**, read these guides first:
+- `tdd/mocking.md` — mocks only at external boundaries, never internal modules
+- `tdd/tests.md` — test behaviour and stable contracts, not implementation details
+
+Do NOT propose a testing approach until you have consulted these. They prevent common mistakes (mocking internal collaborators, asserting framework internals like Tailwind classes).
+
 Show the user **all four parts** — do NOT present a plan missing the prevention line:
 
 1. **Comment:** The original review comment (quoted)
