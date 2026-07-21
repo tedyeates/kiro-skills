@@ -97,7 +97,7 @@ Responsibilities:
 - Transform JSON results to GitHub Review API payloads
 - Post one review per sub-agent via `gh api repos/{owner}/{repo}/pulls/{pr}/reviews`
 - Post "✓ no issues" via `gh pr comment` for clean axes
-- Bootstrap `security.md`/`testing.md` if missing (infer from codebase)
+- Bootstrap `security.md`/`testing.md` file index tables if empty (scan codebase for real paths)
 
 GitHub API mechanics:
 - `gh pr review` CLI does not support inline comments — must use REST API directly
@@ -139,7 +139,7 @@ Prompt (in `agents/pr-test-quality-prompt.md`):
 - Returns structured JSON via summary tool
 
 The 10-item checklist:
-1. New behavior has at least one test (blocker)
+1. New behavior has at least one test (critical)
 2. Happy path AND unhappy/error path tested (high)
 3. Boundary values tested for numeric/range logic (medium)
 4. Mental mutation test — would operator flip survive? (high)
@@ -147,7 +147,7 @@ The 10-item checklist:
 6. Mocks only for non-deterministic/slow/external deps (medium)
 7. No mocking types the team doesn't own without wrapper (low)
 8. Test readable — intent clear from name + arrange (low)
-9. Coverage of new lines exists (info)
+9. Coverage of new lines exists (low)
 10. Test deterministic — no sleep(), no uncontrolled randomness (high)
 
 Scope rules:
@@ -187,15 +187,10 @@ Only runs when design.md exists. Missing spec sections skipped with note.
 **5. `to-spec` Extension (modify `skills/to-spec/SKILL.md`)**
 
 New step after writing `design.md`:
-- Check if `.kiro/specs/security.md` exists → if not, create it:
-  - Infer auth framework from codebase (Supabase config, middleware patterns, JWT usage)
-  - Document auth architecture, sensitive paths, framework-specific security patterns
-  - Include file index table (paths + brief summary)
-- Check if `.kiro/specs/testing.md` exists → if not, create it:
-  - Infer test framework from `package.json`, `pyproject.toml`, config files
-  - Document test patterns, framework, file locations
-  - Include file index table
-- If they exist → append new feature's relevant entries to the file index tables
+- Check if `.kiro/specs/security.md` exists → if not, create from conversation context (auth approach, permissions, sensitive paths discussed during grilling)
+- Check if `.kiro/specs/testing.md` exists → if not, create from conversation context (framework, strategy, conventions decided during grilling)
+- If they exist → append new feature's relevant decisions
+- File index tables start empty — `pr-review` populates them on first run by scanning the codebase
 
 These are project-wide specs (not per-feature), accumulating knowledge across features.
 

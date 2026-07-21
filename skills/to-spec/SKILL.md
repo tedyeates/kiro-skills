@@ -42,7 +42,31 @@ Get user confirmation before proceeding.
 
 Write to `.kiro/specs/{title}/design.md`. Use the template below.
 
-### 5. Publish to GitHub (if configured)
+### 5. Create/update project-wide specs
+
+After writing `design.md`, check and maintain two project-wide spec files that provide context for PR review agents. Synthesise from the conversation.
+
+**`.kiro/specs/security.md`** — If it does not exist, create from conversation context:
+- Auth approach, session model, permission boundaries discussed
+- Planned sensitive endpoints and data flows
+- Security constraints surfaced during grilling
+- File index table: `| Path | Summary |` (empty initially)
+
+If it already exists: append new feature's security-relevant decisions to the appropriate section.
+
+**`.kiro/specs/testing.md`** — If it does not exist, create from conversation context:
+- Test framework, runner, assertion library decided
+- Test strategy (unit/integration/e2e split, what gets mocked)
+- File naming and directory conventions agreed upon
+- File index table: `| Path | Summary |` (empty initially)
+
+If it already exists: append new feature's test-relevant decisions to the appropriate section.
+
+**Rules:**
+- These are project-wide files, NOT per-feature — they accumulate knowledge across features
+- Only append to existing files — never remove or rewrite existing entries
+
+### 6. Publish to GitHub (if configured)
 
 If `project-config.md` specifies `Type: github`, publish a **summarised** version as a GitHub Issue:
 

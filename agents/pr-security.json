@@ -1,0 +1,10 @@
+{
+  "name": "pr-security",
+  "description": "Security review sub-agent. Read-only filesystem access, applies OWASP/ASVS/CWE checklist, returns structured JSON findings.",
+  "prompt": "file://pr-security-prompt.md",
+  "tools": ["read", "grep", "glob", "code"],
+  "allowedTools": ["read", "grep", "glob", "code"],
+  "resources": [
+    "skill://skills/pr-review/SECURITY.md"
+  ]
+}

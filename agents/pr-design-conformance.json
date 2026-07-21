@@ -1,0 +1,8 @@
+{
+  "name": "pr-design-conformance",
+  "description": "Design conformance review sub-agent. Pure analysis — compares diff against design spec, no filesystem access.",
+  "prompt": "file://pr-design-conformance-prompt.md",
+  "tools": ["code"],
+  "allowedTools": ["code"],
+  "resources": []
+}

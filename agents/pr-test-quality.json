@@ -1,0 +1,10 @@
+{
+  "name": "pr-test-quality",
+  "description": "Test quality review sub-agent. Read-only filesystem access, applies Beck/ISTQB/SMURF checklist, returns structured JSON findings.",
+  "prompt": "file://pr-test-quality-prompt.md",
+  "tools": ["read", "grep", "glob", "code"],
+  "allowedTools": ["read", "grep", "glob", "code"],
+  "resources": [
+    "skill://skills/pr-review/TEST-QUALITY.md"
+  ]
+}
