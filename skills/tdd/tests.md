@@ -68,6 +68,35 @@ Why these are bad:
 - Test the *shape* of collaboration, not the *result*
 - Mock internal collaborators instead of testing through the real path
 
+## Test Stable Contracts, Not Implementation Details
+
+Use semantic selectors that represent **state or role** — not framework output that can change without behavior changing.
+
+**Good selectors:**
+```typescript
+// Semantic CSS class representing state
+screen.getByRole("row", { name: /overdue/i })
+container.querySelector(".highlight-overdue")
+
+// Data attributes for test hooks
+screen.getByTestId("invoice-row-overdue")
+```
+
+**Bad selectors:**
+```typescript
+// Tailwind utility classes — change when design changes, behavior unchanged
+container.querySelector("tr.bg-red-100")
+expect(row).toHaveClass("text-amber-600")
+
+// Framework-generated IDs or internal DOM structure
+document.getElementById("radix-:r2:")
+container.querySelector("div > div:nth-child(3) > span")
+```
+
+**Rule:** If the thing you're querying could change without the behaviour changing, it's an implementation detail. Define semantic classes or data attributes that represent the *state* and test against those.
+
+This applies to any framework output: Tailwind classes, generated IDs, CSS-in-JS classnames, framework-internal DOM structure.
+
 ## The Litmus Test
 
 Ask: "If I completely rewrote the internals but kept the same external behavior, would this test still pass?"
