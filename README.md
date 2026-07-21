@@ -98,6 +98,7 @@ See [docs/skill-linkages.md](docs/skill-linkages.md) for a mermaid diagram of ho
 | [to-tickets](skills/to-tickets/SKILL.md) | Tasks | Break spec into tracer-bullet tickets with blocking edges (expand-contract for wide refactors) |
 | [tdd](skills/tdd/SKILL.md) | Implementation | Red-green-refactor loop, one test at a time, never horizontal |
 | [code-review](skills/code-review/SKILL.md) | Implementation | Two-axis review: Standards (conventions + Fowler smells) and Spec (did you build the right thing?) |
+| [pr-resolve](skills/pr-resolve/SKILL.md) | Implementation | Interactive PR comment executor: triage, fix one-at-a-time with user confirmation, resolve threads |
 | [diagnose](skills/diagnose/SKILL.md) | Implementation | 6-phase structured debugging with feedback loop construction |
 | [improve-codebase-architecture](skills/improve-codebase-architecture/SKILL.md) | Post-wave | Find shallow modules, propose deepening opportunities |
 | [domain-modeling](skills/domain-modeling/SKILL.md) | Any (model-invoked) | Maintain shared language: challenge terms, stress-test scenarios, update CONTEXT.md |
