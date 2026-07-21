@@ -159,6 +159,36 @@ Without an identity row, sign-in via the auth API fails silently.
 
 ---
 
+## Auth Config (`config.toml`)
+
+**Evaluate `enable_signup` and `jwt_expiry` as a pair — never in isolation:**
+
+```toml
+# DANGEROUS — open registration + week-long tokens = CWE-862
+[auth]
+enable_signup = true
+[auth.sessions]
+timebox = "168h"  # 7 days (604800 seconds)
+```
+
+Flag as a security issue if:
+- `enable_signup = true` AND `jwt_expiry > 3600` (1 hour)
+- No route-level role enforcement exists (RLS alone is not enough if tokens are long-lived and the user population is uncontrolled)
+
+Long-lived access tokens are only acceptable when the user population is controlled (signup disabled, invite-only, or role-based route guards enforced on every endpoint).
+
+**Safe patterns:**
+
+```toml
+# Open signup — short tokens, rely on refresh
+[auth]
+enable_signup = true
+[auth.sessions]
+timebox = "1h"
+```
+
+---
+
 ## Migrations
 
 **One concern per migration file.** Don't mix schema changes with RLS policies with seed data.
