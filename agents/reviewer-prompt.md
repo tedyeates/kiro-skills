@@ -49,6 +49,8 @@ Also challenge adversarially:
 - Are tests testing behavior (not implementation details)?
 - Is coverage adequate for the complexity of the change?
 
+**Hard fail:** If the diff introduces or substantially modifies a page/route-level component and no corresponding test file exists, this is a 🔴 Critical finding. Create the missing tests yourself (renders, interactions, state transitions) — do not pass the review without them.
+
 ### 5. Fix issues found
 
 If you find problems (code issues, missing tests, quality gaps):

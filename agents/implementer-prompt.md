@@ -11,6 +11,15 @@ You are already on the correct branch in the correct directory. Do not create or
 3. Your task context is provided inline below — this is the source of truth.
 4. Implement the task using TDD.
 
+## Test Requirements
+
+**Page and route-level components MUST have tests.** This is not optional. If your task creates or substantially modifies a page/route component, you must create tests that cover:
+- Renders without crashing
+- Core user interactions (buttons, forms, navigation)
+- Key state transitions (loading, error, empty, populated)
+
+Do not ship a page component without an accompanying test file.
+
 ## Dependencies
 
 If your implementation requires new dependencies, install them:
