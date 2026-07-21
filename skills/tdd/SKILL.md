@@ -59,14 +59,14 @@ Ask: "What should the public interface look like? Which behaviors matter most?"
 
 ### 2. Tracer Bullet
 
-Write ONE test that confirms ONE thing about the system:
+Write ONE integration test that proves the feature is **reachable from its entry point** — the route loads, the page renders, the endpoint responds, or the action triggers. Not internal logic — proof that a user can reach it.
 
 ```
-RED:   Write test for first behavior → test fails
-GREEN: Write minimal code to pass → test passes
+RED:   Write test for reachability → test fails (route 404s, page throws, component doesn't mount)
+GREEN: Wire the minimum to make it reachable → test passes
 ```
 
-This proves the path works end-to-end.
+This catches the "built but not connected" failure mode before you go deep on behavior. Every feature must have at least one integration test proving reachability. If one already exists for the file/route being modified, update it as needed rather than creating a new one.
 
 ### 3. Incremental Loop
 
