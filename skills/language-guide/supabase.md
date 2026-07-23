@@ -189,6 +189,42 @@ timebox = "1h"
 
 ---
 
+## SSR Cookie Config (`createServerClient`)
+
+**Do NOT set `httpOnly: true` on Supabase SSR cookies:**
+
+```typescript
+// ✅ Correct cookie options
+const supabase = createServerClient(url, key, {
+  cookies: {
+    // ... cookie handlers
+  },
+  cookieOptions: {
+    secure: !dev,
+    sameSite: 'lax',
+    path: '/',
+  },
+});
+```
+
+```typescript
+// ❌ Wrong — breaks createBrowserClient
+cookieOptions: {
+  httpOnly: true,  // DO NOT SET THIS
+  secure: !dev,
+  sameSite: 'lax',
+  path: '/',
+}
+```
+
+Why: `createBrowserClient` reads cookies via `document.cookie` for session storage and refresh. Setting `httpOnly: true` makes the cookie invisible to JavaScript — all client-side queries silently run as anonymous.
+
+Supabase's auth model does not need `httpOnly` because the cookie contains only the JWT (already tamper-proof via signature) and the refresh token (validated server-side). The framework handles session refresh through cookie access.
+
+Reference: https://supabase.com/docs/guides/auth/server-side/advanced-guide#how-do-i-make-the-cookies-httponly-
+
+---
+
 ## Migrations
 
 **One concern per migration file.** Don't mix schema changes with RLS policies with seed data.

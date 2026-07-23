@@ -59,7 +59,7 @@ Filter to unresolved threads only. If resuming from a previous session, report p
 
 **Check for existing triage file:** `.kiro/pr-resolve-{pr_number}.md`
 
-If it exists, load it — skip re-triaging. Remove any items that have since been resolved on GitHub (stale entries). Present the updated list to the user.
+If it exists, load it — skip re-triaging. Present the remaining items to the user.
 
 If it doesn't exist, perform fresh triage:
 
@@ -85,11 +85,13 @@ Process in order: security → test → design. For each item:
 
 #### 5a. Present plan
 
-**When the fix involves writing or modifying tests**, read these guides first:
+**Before proposing any fix**, consult the `language-guide` skill for the project's tech stack.
+
+**When the fix involves writing or modifying tests**, also read:
 - `tdd/mocking.md` — mocks only at external boundaries, never internal modules
 - `tdd/tests.md` — test behaviour and stable contracts, not implementation details
 
-Do NOT propose a testing approach until you have consulted these. They prevent common mistakes (mocking internal collaborators, asserting framework internals like Tailwind classes).
+Do NOT propose a fix until you have consulted applicable guides.
 
 Show the user **all four parts** — do NOT present a plan missing the prevention line:
 
@@ -207,7 +209,12 @@ PR #{pr_number} resolve complete:
 
 If tests fail at the final gate, present failures to user for decision.
 
-**Clean up:** Delete `.kiro/pr-resolve-{pr_number}.md` when all comments are resolved.
+**Reconcile triage file:** Before exiting, update `.kiro/pr-resolve-{pr_number}.md`:
+- Remove items resolved this session (and any resolved externally on GitHub)
+- Persist only still-unresolved items
+- If nothing remains, delete the file
+
+This keeps the file authoritative so the next invocation opens straight into an accurate remaining-items list without re-fetching GitHub thread state.
 
 ## Flagging skill updates
 
