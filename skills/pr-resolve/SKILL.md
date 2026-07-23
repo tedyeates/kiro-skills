@@ -141,7 +141,12 @@ One commit containing: fix + prevention measure (test/correction/skill flag).
 
 ```bash
 git add <changed files>
-git commit -m "<concise description of fix and prevention>"
+```
+
+Invoke `caveman-commit` to generate the commit message. Include `Refs #{pr_number}` in the body.
+
+```bash
+git commit -m "<generated message>"
 ```
 
 #### 5e. Reply and resolve
@@ -219,3 +224,11 @@ When "why did this slip through" → "skill needs updating":
 **Comment on deleted line:** Show the comment context, ask user if still relevant. If not, resolve with "No longer applicable — code removed."
 
 **Skip and resolve:** User can say "skip — not an issue" for any item. Skill resolves the thread with a reply: "Reviewed — no action needed. Reason: {user's reason}."
+
+## See Also
+
+| Skill | Relationship |
+|-------|-------------|
+| `caveman-commit` | Model-invoked in step 5d for commit message generation |
+| `grill-with-docs` | Invoked for discussion items needing domain grilling |
+| `tdd` | Consulted guides (`mocking.md`, `tests.md`) when fixes involve tests |
