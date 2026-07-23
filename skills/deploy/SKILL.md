@@ -8,9 +8,27 @@ Copy this repo's skills, agents, and steering files to the global `~/.kiro/` dir
 
 ## Process
 
+### 1. Check for differences
+
+Before copying, diff the repo against the global `~/.kiro/` directory:
+
+```bash
+diff -rq ./skills/ ~/.kiro/skills/
+diff -rq ./agents/ ~/.kiro/agents/
+diff -rq ./steering/ ~/.kiro/steering/
+```
+
+Report a summary table of changes: modified files, new files (only in repo), and files only in global (would be preserved, not deleted).
+
+- If **no differences** → report "Already up to date" and stop.
+- If **files only exist in global** (not in repo) → warn that these won't be overwritten but highlight them so the user can decide if they should be pulled back into the repo.
+- If **files differ or are new in repo** → show the summary and ask the user to confirm before copying.
+
+### 2. Copy (after confirmation)
+
 Detect the OS and run the appropriate commands:
 
-### Windows (PowerShell)
+#### Windows (PowerShell)
 
 ```powershell
 Copy-Item -Recurse -Force .\skills\* ~\.kiro\skills\
@@ -18,7 +36,7 @@ Copy-Item -Force .\agents\* ~\.kiro\agents\
 Copy-Item -Force .\steering\* ~\.kiro\steering\
 ```
 
-### macOS / Linux
+#### macOS / Linux
 
 ```bash
 cp -r ./skills/* ~/.kiro/skills/
