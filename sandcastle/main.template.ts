@@ -25,6 +25,7 @@ const config = {
   hostTest: "",
   hostTeardown: "", // always runs on completion or failure (e.g. "supabase stop --no-backup")
   timeoutSeconds: 900,
+  maxReviewRetries: 3, // max times to re-run reviewer on check failure before hard fail
   agentLabel: "ready-for-agent", // only tasks carrying this label are implemented
 };
 
@@ -313,25 +314,51 @@ async function main() {
         reviewerContext = `Implementer checks FAILED:\n${postImpl.output.slice(-2000)}`;
       }
 
-      // Reviewer always runs
-      log(`[task #${task.number}] reviewing...`);
-      const reviewPrompt = buildReviewerPrompt(task, reviewerContext, designPath);
-      const revResult = await sandbox.exec(
-        `kiro-cli chat --no-interactive --agent reviewer "${escapeShell(reviewPrompt)}"`,
-        { cwd: "/home/agent/workspace", onLine: liveStream(`#${task.number} review`) }
-      );
-      writeFileSync(
-        resolve(logsDir, `${task.number}-reviewer.log`),
-        revResult.stdout + "\n" + revResult.stderr
-      );
+      // Review loop — reviewer runs, then checks. If checks fail, resume the
+      // same reviewer session with error context for another attempt (max retries).
+      let reviewContext = reviewerContext;
+      let reviewPassed = false;
 
-      // Final gate
-      log(`[task #${task.number}] final checks...`);
-      const finalChecks = await runChecks(sandbox, sandbox.worktreePath);
+      for (let attempt = 1; attempt <= config.maxReviewRetries; attempt++) {
+        const isRetry = attempt > 1;
+        log(`[task #${task.number}] reviewing (attempt ${attempt}/${config.maxReviewRetries})...`);
 
-      if (!finalChecks.passed) {
-        const tail = finalChecks.output.split("\n").slice(-30).join("\n");
-        throw new Error(`[task #${task.number}] FAILED final checks:\n${tail}`);
+        let reviewCmd: string;
+        if (!isRetry) {
+          const reviewPrompt = buildReviewerPrompt(task, reviewContext, designPath);
+          reviewCmd = `kiro-cli chat --no-interactive --agent reviewer "${escapeShell(reviewPrompt)}"`;
+        } else {
+          // Resume the same reviewer session with failure context
+          const retryPrompt = `The checks failed after your last review. Fix the issues below and try again.\n\n${reviewContext}`;
+          reviewCmd = `kiro-cli chat --no-interactive --resume "${escapeShell(retryPrompt)}"`;
+        }
+
+        const revResult = await sandbox.exec(reviewCmd, {
+          cwd: "/home/agent/workspace",
+          onLine: liveStream(`#${task.number} review`),
+        });
+        writeFileSync(
+          resolve(logsDir, `${task.number}-reviewer-${attempt}.log`),
+          revResult.stdout + "\n" + revResult.stderr
+        );
+
+        log(`[task #${task.number}] post-review checks (attempt ${attempt})...`);
+        const checks = await runChecks(sandbox, sandbox.worktreePath);
+
+        if (checks.passed) {
+          reviewPassed = true;
+          break;
+        }
+
+        if (attempt < config.maxReviewRetries) {
+          log(`[task #${task.number}] checks failed, retrying reviewer...`);
+          reviewContext = checks.output.slice(-3000);
+        } else {
+          const tail = checks.output.split("\n").slice(-30).join("\n");
+          throw new Error(
+            `[task #${task.number}] FAILED after ${config.maxReviewRetries} review attempts:\n${tail}`
+          );
+        }
       }
 
       done.add(task.number);

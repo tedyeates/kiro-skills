@@ -117,6 +117,41 @@ create policy "team access" on public.projects
 
 Not: `auth.uid() in (select user_id from team_members where team_id = projects.team_id)` — this runs the subquery per row.
 
+**Never use `EXISTS` subqueries against RLS-protected tables in policies:**
+
+```sql
+-- ❌ Wrong — nested RLS silently returns 0 rows for DELETE/UPDATE
+create policy "dept can delete photos" on public.check_photo
+  for delete to authenticated
+  using (
+    exists (
+      select 1 from public."check"
+      where id = check_photo.check_id
+      and check_type = (select public.get_user_dept())
+    )
+  );
+
+-- ✅ Correct — use a SECURITY DEFINER helper to bypass nested RLS
+create or replace function public.check_type_for_check(p_check_id uuid)
+returns text
+language sql
+security definer
+set search_path = ''
+as $$
+  select check_type from public."check" where id = p_check_id;
+$$;
+
+create policy "dept can delete photos" on public.check_photo
+  for delete to authenticated
+  using (
+    public.check_type_for_check(check_id) = (select public.get_user_dept())
+  );
+```
+
+Why: PostgreSQL evaluates SELECT policies *before* allowing DELETE/UPDATE to see rows. If the SELECT policy on the referenced table (`"check"`) also uses RLS, the nested evaluation silently returns 0 rows instead of erroring. The DELETE appears to succeed but affects nothing. This applies to both the SELECT and DELETE policies on the target table — both must avoid nested RLS subqueries.
+
+The fix: wrap the cross-table lookup in a `SECURITY DEFINER` function that bypasses RLS on the referenced table. Apply to ALL policies on the target table (SELECT, DELETE, UPDATE) that reference the RLS-protected table.
+
 ---
 
 ## Seed Data (auth.users)
