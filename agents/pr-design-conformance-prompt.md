@@ -22,6 +22,23 @@ For each section of the design spec that exists, check conformance per the rules
    - Role can do something spec forbids = **[CRITICAL]**
    - Missing role restriction = **[HIGH]**
 
+   **If the spec contains an `Access Matrix Enforcement` section**, perform a deep cross-layer audit:
+
+   a. **Backend enforcement**: For every ❌ in the matrix, read the relevant migration/RLS/function files and verify there is actual enforcement (RLS policy blocks it, `field_permissions` denies it, or function checks role). Flag if backend ALLOWS what spec FORBIDS.
+   b. **Frontend gating**: For every ❌ in the matrix, read the relevant UI component files and verify the control (button, editable cell, link) is NOT rendered for that role. Flag if frontend shows a control that backend will reject — users should never trigger actions that produce errors.
+   c. **Navigation links**: For every route a role CAN access, verify a discoverable navigation link exists from a page they can reach. Flag missing nav links.
+   d. **Bypass detection**: Look for code paths that write to restricted fields/tables via direct `.update()`/`.insert()` without going through the role-checked function (e.g., a status machine using direct update that bypasses `field_permissions`).
+   e. **Test coverage**: If the spec's Access Matrix section includes Test Requirements, verify that corresponding test files exist for backend (pgTAP/unit), frontend (component), and E2E layers. Flag missing access matrix tests as **[HIGH]**.
+
+   Severities for access matrix findings:
+   - Backend allows what spec forbids = **[CRITICAL]**
+   - Frontend shows control that backend will reject = **[HIGH]**
+   - Bypass path allows restricted action via direct DB write = **[HIGH]**
+   - Missing access matrix tests specified by design = **[HIGH]**
+   - Missing navigation link to accessible route = **[MEDIUM]**
+   - Backend blocks correctly but no frontend gating (defense-in-depth gap) = **[MEDIUM]**
+   - API-exploitable bypass with no UI path = **[MEDIUM]**
+
 3. **State Diagram** — Do status transitions in code match the diagram?
    - Missing transition = **[HIGH]**
    - Extra transition not in spec = **[MEDIUM]**

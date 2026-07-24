@@ -11,7 +11,7 @@ Per-section conformance rules and severity ladder. This file documents what the 
 | Spec Section | Conformance Question | What constitutes a finding |
 |---|---|---|
 | ER Diagram | Do migrations/schema include all columns, types, FKs? Extra columns not in spec? | Missing column = High, wrong type = Medium, extra column = Low (scope creep) |
-| Personas & Roles | Do roles match spec permissions? | Role can do something spec forbids = Critical, missing role restriction = High |
+| Personas & Roles | Do roles match spec permissions? Cross-layer enforcement if Access Matrix section exists? | Role can do something spec forbids = Critical, missing role restriction = High, frontend shows control backend rejects = High, bypass path = High, missing nav link = Medium, missing access tests = High |
 | State Diagram | Do status transitions in code match the diagram? | Missing transition = High, extra transition not in spec = Medium |
 | Flowchart | Does business logic follow same branching/sequencing? | Wrong branch logic = High, missing branch = Medium |
 | User Stories | Is each story implemented? Any skipped? | Story not implemented = High, partially done (edge case skipped) = Medium |
@@ -34,3 +34,31 @@ Per-section conformance rules and severity ladder. This file documents what the 
 3. **Scope creep**: code does X, spec is silent on X → Low finding.
 4. **Only checks against what the spec explicitly states** — does not invent requirements.
 5. **No filesystem access** — analysis is based solely on the diff and spec content provided.
+
+## Access Matrix Deep Check (Personas & Roles Section 2)
+
+When the design spec contains an `## Access Matrix Enforcement` section (with View/Read, Field-Level Edit, Action-Level matrices), section 2 becomes a **completeness-oriented** check rather than a purely diff-oriented one.
+
+### Diff-Oriented vs Completeness-Oriented
+
+| | Standard (diff-oriented) | Access Matrix (completeness-oriented) |
+|---|---|---|
+| **Input** | What changed in this PR | What the spec says must be enforced |
+| **Question** | "Does this code match the spec?" | "For every restriction, is there enforcement at every layer?" |
+| **Scope** | Only files in the diff | Any file that touches access control (may need to read files not in the diff) |
+| **Catches** | Wrong implementation | Missing implementation |
+
+### Checks Performed
+
+For each role × entity × action in the matrix:
+
+1. **Backend**: Read RLS policies, `field_permissions`, service functions. Verify denied actions have actual enforcement.
+2. **Frontend**: Read UI components. Verify denied actions don't render controls. No "click then error" patterns.
+3. **Navigation**: Verify accessible routes have discoverable nav links.
+4. **Bypasses**: Find direct DB writes that skip the role-checked path.
+5. **Tests**: Verify access matrix test coverage exists per spec requirements.
+
+### When to Trigger
+
+- The spec has `## Access Matrix Enforcement` → perform full cross-layer audit
+- The spec only has a simple Personas table → perform basic role matching (standard behaviour)

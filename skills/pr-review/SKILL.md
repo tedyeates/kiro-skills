@@ -7,7 +7,7 @@ description: Review an open PR across three axes — security, test quality, and
 Orchestrator skill that reviews an open PR across three axes:
 1. **Security** — OWASP/ASVS/CWE checklist (`pr-security` agent)
 2. **Test Quality** — Beck/ISTQB/SMURF checklist (`pr-test-quality` agent)
-3. **Design Conformance** — spec section comparison (`pr-design-conformance` agent)
+3. **Design Conformance** — spec section comparison including persona access matrix enforcement (`pr-design-conformance` agent)
 
 Posts results as GitHub PR reviews with inline comments.
 
