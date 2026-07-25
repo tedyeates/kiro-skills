@@ -493,6 +493,11 @@ function buildReviewerPrompt(task: SubIssue, context: string, designPath?: strin
   prompt += `## Task #${task.number}: ${task.title}\n\n${task.body}\n\n`;
   prompt += `## Context\n${context}\n\n`;
   prompt += `## Check commands\n- Test: ${config.test}\n- Type-check: ${config.typeCheck}\n`;
+  prompt += `\n## Constraints\n`;
+  prompt += `You CANNOT run E2E or host-side tests (database tests, Playwright E2E). `;
+  prompt += `Do not speculate about E2E failures or debug timing issues you cannot observe. `;
+  prompt += `Make your best fix, verify with unit tests and type-check only, then finish. `;
+  prompt += `The orchestrator will run E2E tests on the host and feed failures back to you in the next retry if they fail.\n`;
   if (designPath) prompt += `\n## Design context\nRead ${designPath} for architectural decisions.\n`;
   return prompt;
 }

@@ -2,10 +2,19 @@ FROM node:22-bookworm
 
 RUN apt-get update && apt-get install -y \
     git curl jq python3 python3-venv python3-pip \
+    libtap-parser-sourcehandler-pgtap-perl postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 # pnpm via corepack
 RUN corepack enable && corepack prepare pnpm@latest --activate
+
+# Supabase CLI — Go binary via .deb package (global npm install is blocked)
+# Filename is versioned so we resolve the latest tag first.
+RUN SUPABASE_VERSION=$(curl -fsSL https://api.github.com/repos/supabase/cli/releases/latest | jq -r '.tag_name' | sed 's/^v//') \
+    && curl -fsSL -o /tmp/supabase.deb \
+       "https://github.com/supabase/cli/releases/download/v${SUPABASE_VERSION}/supabase_${SUPABASE_VERSION}_linux_amd64.deb" \
+    && dpkg -i /tmp/supabase.deb \
+    && rm /tmp/supabase.deb
 
 # Playwright system libraries (chromium): libnss3, libnspr4, etc.
 # Version-agnostic OS deps — the version-matched browser BINARY is installed
