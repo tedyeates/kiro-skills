@@ -31,7 +31,10 @@
         ".venv/Scripts/pytest.*",
         ".venv/Scripts/mypy.*",
         ".venv/bin/pytest.*",
-        ".venv/bin/mypy.*"
+        ".venv/bin/mypy.*",
+        "supabase .*",
+        "psql .*",
+        "pg_prove .*"
       ],
       "autoAllowReadonly": true,
       "denyByDefault": true
