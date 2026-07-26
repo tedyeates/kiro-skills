@@ -103,3 +103,30 @@ Ask: "If I completely rewrote the internals but kept the same external behavior,
 
 - **Yes** → Good test
 - **No** → Implementation-coupled test, rewrite it
+
+## Test-Tier Topology
+
+The guidance above covers test *quality* — writing behavior-based tests, not implementation-coupled ones. This section covers tier *topology* — which layer to write the test in, so agents stop defaulting to slow, flaky browser-mode tests for things a faster tier already proves.
+
+Four tiers, each proving a different seam:
+
+| Tier | Proves | Typical file suffix | Runner |
+|------|--------|---------------------|--------|
+| jsdom component | Component behavior — render, user interaction, DOM assertions | `*.svelte.spec.ts` (Svelte) / framework-equivalent | `@testing-library/*` + `user-event`, Node + jsdom — no real browser |
+| SSR page-wiring | Page-wiring — does a page actually connect its loaded data + child components into the rendered output | `*.ssr.spec.ts` | Server-side render call (e.g. `render` from `svelte/server`), plain Node env |
+| pgTAP (or equivalent) | DB — schema, RLS/permissions, views, constraints | SQL test files | In-DB test runner (e.g. pgTAP) against a real local instance |
+| Thin human e2e | Real-stack smoke — flows that need a genuine browser + genuine backend together | e2e spec files | Full browser (e.g. Playwright), run by a human, not in the agent loop |
+
+**Why jsdom over browser-mode for component tests:** shared-browser test runners (e.g. vitest browser mode) discover app dependencies lazily at runtime; each discovery triggers a dev-server dep re-optimize + full page reload that kills in-flight tests, producing non-deterministic timeouts in an unattended agent loop. Rendering through Node/jsdom transforms dependencies ahead of time instead, so there's no mid-run reload — component tests become deterministic. Reserve real-browser rendering for the thin e2e tier below, where it's unavoidable.
+
+**Why a separate SSR tier:** "component builds but is never wired into its page" is a common bug class that jsdom component tests don't catch (they render the component in isolation, not the page). A cheap server-render assertion — does the page's rendered HTML actually contain the data and child components it's supposed to wire in — catches this without a browser.
+
+### e2e-authoring bar (thin by principle)
+
+Author an e2e test only when the jsdom, SSR, and DB tiers genuinely cannot prove the flow — i.e. it needs a real authenticated session, real file/object storage, or a redirect that crosses layers (e.g. auth middleware → route). If a faster tier can prove it, prove it there instead; don't reach for e2e by default.
+
+Implementers **author** e2e specs as part of a feature but **never run them in the agent loop** — e2e is a human-run smoke layer, kept intentionally small, out of the deterministic test loop that gates agent PRs.
+
+### Applying this to a project
+
+The suffix/runner names above are illustrative (Svelte + Vitest + Playwright); adapt to the project's actual stack. Check the project's own testing docs or steering for the concrete tier mapping before assuming these exact names apply.
