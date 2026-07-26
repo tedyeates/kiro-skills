@@ -65,7 +65,7 @@ Iterate until approved.
 Publish issues in dependency order (blockers first) so IDs are available. Use [GITHUB-API.md](./GITHUB-API.md) for exact API patterns.
 
 For each ticket:
-1. Create with `gh api` (to get the `id` back)
+1. Write the body to a file, then create with `gh api` using `-F body=@<file>` (to get the `id` back). **Never pass the body as an inline `@/tmp/...` pointer** — `-f`/`--body` store it verbatim and the content is lost when temp files are cleaned up. See [GITHUB-API.md](./GITHUB-API.md) "Passing the issue body".
 2. Link as sub-issue of the parent spec issue
 3. Add `blocked_by` dependencies for each blocker
 4. Apply `ready-for-agent` label
