@@ -11,6 +11,7 @@ Platform and framework-specific patterns that agents get wrong repeatedly. Each 
 | Guide | File | When to consult |
 |-------|------|-----------------|
 | Supabase | [supabase.md](supabase.md) | Writing migrations, RLS policies, auth hooks, seed data, or database functions for a Supabase project |
+| Svelte Component Tests | [svelte-component-tests.md](svelte-component-tests.md) | Writing Svelte 5 component/page tests under jsdom with `@testing-library/svelte` (`*.svelte.spec.ts`) — mocks, async races, cross-test pollution |
 | Vitest Browser | [vitest-browser.md](vitest-browser.md) | Writing component/integration tests that run in vitest browser mode |
 
 ## How This Skill Is Used

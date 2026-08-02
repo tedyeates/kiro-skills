@@ -16,17 +16,43 @@ import { resolve } from "node:path";
 
 const config = {
   repo: "your-org/your-repo",
-  setup: "pnpm install",
-  test: "pnpm test",
-  typeCheck: "pnpm tsc --noEmit",
-  // Host commands — run on host machine (not in sandbox).
-  // Useful for supabase CLI, DB migrations, pgTap tests, etc.
-  hostSetup: "",
-  hostTest: "",
-  hostTeardown: "", // always runs on completion or failure (e.g. "supabase stop --no-backup")
-  timeoutSeconds: 900,
-  maxReviewRetries: 3, // max times to re-run reviewer on check failure before hard fail
-  agentLabel: "ready-for-agent", // only tasks carrying this label are implemented
+  setup: "pnpm install && pnpm exec playwright install chromium",
+  testVite: "pnpm test:unit",
+  // Sandbox-side pgTAP run: raw pg_prove against $DATABASE_URL. Intentionally
+  // diverges from the host `pnpm test:db` (`supabase test db`) — `supabase
+  // test db` does NOT re-apply this branch's migrations over the Docker
+  // network, which is exactly why `resetDb` (below) exists as a prerequisite
+  // step in the sandbox loop. Do NOT "unify" these two paths.
+  testDb: "psql \"$DATABASE_URL\" -c \"CREATE EXTENSION IF NOT EXISTS pgtap;\" && pg_prove --dbname \"$DATABASE_URL\" --ext .sql supabase/tests/",
+  testE2e: "pnpm test:e2e",
+  typeCheck: "pnpm check",
+  // In-sandbox DB reset over the Docker network. Replays THIS branch's
+  // migrations + seed against the shared Supabase db container using the
+  // migration files the agent just wrote (workspace is a bind-mount of the
+  // branch worktree). Runs before the DB check so newly-authored migrations
+  // are actually applied — `pg_prove` runs against the live db and does NOT
+  // auto-apply migrations.
+  // PGSSLMODE=disable: the local db container serves no TLS, but the CLI forces
+  // TLS for --db-url targets unless told otherwise.
+  resetDb: "PGSSLMODE=disable supabase db reset --db-url \"$DATABASE_URL\" --yes",
+  // Host-side: ensure Supabase is running (kept alive between tasks)
+  hostSetup: "supabase status > /dev/null 2>&1 || supabase start",
+  // Host-side reset between tasks: replay migrations + seed, reinstall deps
+  hostReset: "supabase db reset && pnpm install",
+  agentLabel: "ready-for-agent",
+};
+
+// ─── Scoped Test Commands ────────────────────────────────────────────────────
+// Implementers and reviewers run ONLY the tests covering the files they touched.
+// The orchestrator guard (runChecks) still runs the full suite afterward, so
+// these scoped runs are a fast local signal, not the source of truth.
+// Vite + DB only — no e2e template: implementers author e2e specs but never
+// run them in-loop (verified by the human smoke layer instead).
+const scopedTests = {
+  // vitest takes a positional path/substring filter
+  vite: `${config.testVite} <file>`,
+  // pg_prove targets a single .sql file instead of the whole supabase/tests/ dir
+  db: config.testDb.replace("supabase/tests/", "supabase/tests/<file>"),
 };
 
 // ─── CLI Arg Parsing ─────────────────────────────────────────────────────────
@@ -35,8 +61,6 @@ const args = process.argv.slice(2);
 const prdIdx = args.indexOf("--prd");
 const prdNumber = prdIdx !== -1 ? Number(args[prdIdx + 1]) : NaN;
 const dryRun = args.includes("--dry-run");
-// --verbose / -v: stream agent + check output live to the terminal (for testing).
-// Logs are still written to .sandcastle/logs/ regardless.
 const verbose = args.includes("--verbose") || args.includes("-v");
 
 if (isNaN(prdNumber)) {
@@ -50,7 +74,6 @@ function gh(cmd: string): string {
   return execSync(`gh ${cmd}`, { encoding: "utf-8" }).trim();
 }
 
-/** Run a gh command piping content via stdin (avoids shell-escaping issues with newlines). */
 function ghStdin(cmd: string, input: string): string {
   return execSync(`gh ${cmd}`, { input, encoding: "utf-8" }).trim();
 }
@@ -65,8 +88,6 @@ function elapsed(start: number): string {
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m${s % 60}s`;
 }
 
-// Returns an onLine callback that mirrors sandbox output to the terminal when
-// --verbose is set; otherwise undefined (output is only captured to the log).
 function liveStream(prefix: string): ((line: string) => void) | undefined {
   if (!verbose) return undefined;
   return (line: string) => {
@@ -75,11 +96,58 @@ function liveStream(prefix: string): ((line: string) => void) | undefined {
   };
 }
 
+// ─── Supabase Network Detection ──────────────────────────────────────────────
+
+/**
+ * Detect the Docker network Supabase CLI created for local dev.
+ * Convention: supabase_network_<project-dir-name>
+ */
+function detectSupabaseNetwork(): string {
+  const networks = execSync(
+    `docker network ls --filter name=supabase_network --format "{{.Name}}"`,
+    { encoding: "utf-8" }
+  ).trim().split("\n").filter(Boolean);
+
+  if (networks.length === 0) {
+    throw new Error("No supabase_network_* Docker network found. Run 'supabase start' first.");
+  }
+  if (networks.length > 1) {
+    log(`Multiple Supabase networks found: ${networks.join(", ")}. Using first.`);
+  }
+  return networks[0];
+}
+
+/**
+ * Build a .env for the sandbox that uses Docker container hostnames
+ * instead of localhost ports. Kong on the Supabase network exposes port 8000.
+ */
+function buildSandboxEnv(network: string): string {
+  // Derive project suffix from network name: supabase_network_<suffix>
+  const suffix = network.replace("supabase_network_", "");
+  const kongHost = `supabase_kong_${suffix}`;
+
+  // Read the host .env to get the anon key (not secret for local dev)
+  const hostEnvPath = resolve(".env");
+  let anonKey = "";
+  if (existsSync(hostEnvPath)) {
+    const content = readFileSync(hostEnvPath, "utf-8");
+    const match = content.match(/PUBLIC_SUPABASE_ANON_KEY=(.+)/);
+    anonKey = match?.[1]?.trim() ?? "";
+  }
+
+  if (!anonKey) {
+    throw new Error("PUBLIC_SUPABASE_ANON_KEY not found in .env — needed for sandbox.");
+  }
+
+  return [
+    `PUBLIC_SUPABASE_URL=http://${kongHost}:8000`,
+    `PUBLIC_SUPABASE_ANON_KEY=${anonKey}`,
+  ].join("\n") + "\n";
+}
+
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
 function ensureAuth() {
-  // Headless mode: KIRO_API_KEY env var is passed into the sandbox container.
-  // When set, kiro-cli skips browser-based login entirely.
   if (!process.env.KIRO_API_KEY) {
     console.error(
       "ERROR: KIRO_API_KEY not set. Add it to .env or export it.\n" +
@@ -163,19 +231,16 @@ async function main() {
   for (const t of allIssues) console.log(`  #${t.number} — ${t.title}`);
 
   if (dryRun) {
-    const unblocked: SubIssue[] = [];
-    const blocked: SubIssue[] = [];
-
-    // Fetch closed issues to know which blockers are already done
     const closedNumbers = new Set<number>();
     try {
       const closedRaw = gh(
         `api repos/${config.repo}/issues/${prdNumber}/sub_issues --jq "[.[] | select(.state == \\"closed\\") | .number]"`
       );
       for (const n of JSON.parse(closedRaw || "[]")) closedNumbers.add(n);
-    } catch {
-      // if fetch fails, treat nothing as closed
-    }
+    } catch { /* noop */ }
+
+    const unblocked: SubIssue[] = [];
+    const blocked: SubIssue[] = [];
 
     for (const t of allIssues) {
       if (t.blockedBy.every((b) => closedNumbers.has(b))) {
@@ -201,26 +266,37 @@ async function main() {
     process.exit(0);
   }
 
-  // Halt before spinning up the sandbox if nothing is actionable right now.
-  // Must consider already-closed sub-issues as satisfied dependencies.
+  // Check for unblocked tasks before expensive setup
   const closedNumbers = new Set<number>();
   try {
     const closedRaw = gh(
       `api repos/${config.repo}/issues/${prdNumber}/sub_issues --jq "[.[] | select(.state == \\"closed\\") | .number]"`
     );
     for (const n of JSON.parse(closedRaw || "[]")) closedNumbers.add(n);
-  } catch {
-    // if fetch fails, proceed — worst case tasks stay blocked
-  }
+  } catch { /* noop */ }
 
   if (!nextUnblocked(allIssues, closedNumbers)) {
-    log(
-      `No unblocked '${config.agentLabel}' tasks — all remaining tasks are blocked by open dependencies. Halting.`
-    );
+    log(`No unblocked '${config.agentLabel}' tasks — all blocked by open dependencies. Halting.`);
     process.exit(1);
   }
 
-  // ─── Branch & Sandbox Lifecycle ──────────────────────────────────────────
+  // ─── Host Setup: Start Supabase ────────────────────────────────────────────
+
+  if (config.hostSetup) {
+    log(`Host setup: ${config.hostSetup}`);
+    execSync(config.hostSetup, { stdio: "inherit" });
+  }
+
+  // ─── Detect Supabase Network & Build Sandbox Env ───────────────────────────
+
+  const supabaseNetwork = detectSupabaseNetwork();
+  log(`Supabase Docker network: ${supabaseNetwork}`);
+
+  const suffix = supabaseNetwork.replace("supabase_network_", "");
+  const dbUrl = `postgresql://postgres:postgres@supabase_db_${suffix}:5432/postgres`;
+  const sandboxEnvContent = buildSandboxEnv(supabaseNetwork);
+
+  // ─── Branch & Sandbox Lifecycle ────────────────────────────────────────────
 
   const branch = `feature/prd-${prdNumber}`;
   log(`Target branch: ${branch}`);
@@ -229,8 +305,10 @@ async function main() {
     branch,
     sandbox: docker({
       imageName: "kiro-runner",
+      network: supabaseNetwork,
       env: {
         KIRO_API_KEY: process.env.KIRO_API_KEY!,
+        DATABASE_URL: dbUrl,
       },
       mounts: [
         { hostPath: "~/.kiro", sandboxPath: "/home/agent/.kiro", readonly: true },
@@ -244,196 +322,136 @@ async function main() {
     },
   });
 
-  log("Sandbox ready.");
+  log("Sandbox ready (attached to Supabase network).");
 
-  // Carry the host's git-ignored .env into the workspace so type-check/test see
-  // required env vars (e.g. framework `$env` imports). The sandbox worktree is
-  // built from the branch, so git-ignored files like .env are never present.
-  // base64 round-trips the contents through exec without shell-escaping issues
-  // or logging secret values. Generic: only runs if the repo has a root .env.
-  const hostEnv = resolve(".env");
-  if (existsSync(hostEnv)) {
-    const b64 = readFileSync(hostEnv).toString("base64");
-    await sandbox.exec(`echo ${b64} | base64 -d > .env`, {
-      cwd: "/home/agent/workspace",
-    });
-    log("Copied host .env into workspace.");
-  }
+  // Write sandbox .env with container hostnames
+  const b64Env = Buffer.from(sandboxEnvContent).toString("base64");
+  await sandbox.exec(`echo ${b64Env} | base64 -d > .env`, {
+    cwd: "/home/agent/workspace",
+  });
+  log("Wrote sandbox .env (Kong container hostname).");
 
   const logsDir = resolve(".sandcastle", "logs");
   mkdirSync(logsDir, { recursive: true });
 
-  // Host-side setup: runs on the HOST against the bind-mounted worktree
-  // (sandbox.worktreePath), where the host Docker daemon is reachable. Once.
-  if (config.hostSetup) {
-    log(`Host setup: ${config.hostSetup}`);
-    execSync(config.hostSetup, { cwd: sandbox.worktreePath, stdio: "inherit" });
+  // ─── Task Loop ─────────────────────────────────────────────────────────────
+
+  const done = new Set<number>(closedNumbers);
+  const completedTasks: SubIssue[] = [];
+  let task: SubIssue | undefined;
+
+  while ((task = nextUnblocked(allIssues, done))) {
+    const taskStart = Date.now();
+
+    // Host-side: reset DB + reinstall deps before each task
+    log(`[task #${task.number}] host reset: ${config.hostReset}`);
+    execSync(config.hostReset, { stdio: "inherit" });
+
+    log(`[task #${task.number}] implementing...`);
+
+    const implPrompt = buildImplementerPrompt(task, designPath);
+    const implResult = await sandbox.exec(
+      `kiro-cli chat --no-interactive --agent implementer "${escapeShell(implPrompt)}"`,
+      { cwd: "/home/agent/workspace", onLine: liveStream(`#${task.number} impl`) }
+    );
+    writeFileSync(
+      resolve(logsDir, `${task.number}-implementer.log`),
+      implResult.stdout + "\n" + implResult.stderr
+    );
+
+    // Post-implementer checks
+    log(`[task #${task.number}] verifying...`);
+    const postImpl = await runChecks(sandbox);
+
+    let reviewerContext: string;
+    if (postImpl.passed) {
+      reviewerContext = "All checks passed. Review for code quality.";
+    } else {
+      reviewerContext = `Implementer checks FAILED:\n${postImpl.output.slice(-2000)}`;
+    }
+
+    // Single reviewer pass — fail = hard fail
+    log(`[task #${task.number}] reviewing...`);
+    const reviewPrompt = buildReviewerPrompt(task, reviewerContext, designPath);
+    const revResult = await sandbox.exec(
+      `kiro-cli chat --no-interactive --agent reviewer "${escapeShell(reviewPrompt)}"`,
+      { cwd: "/home/agent/workspace", onLine: liveStream(`#${task.number} review`) }
+    );
+    writeFileSync(
+      resolve(logsDir, `${task.number}-reviewer.log`),
+      revResult.stdout + "\n" + revResult.stderr
+    );
+
+    // Post-reviewer checks
+    log(`[task #${task.number}] post-review checks...`);
+    const postReview = await runChecks(sandbox);
+
+    if (!postReview.passed) {
+      const tail = postReview.output.split("\n").slice(-30).join("\n");
+      throw new Error(`[task #${task.number}] FAILED post-review checks:\n${tail}`);
+    }
+
+    done.add(task.number);
+    completedTasks.push(task);
+    gh(`issue close ${task.number} --repo ${config.repo}`);
+    checkpointPR(branch, prdNumber, task);
+    log(`[task #${task.number}] ✓ closed & pushed (${elapsed(taskStart)})`);
   }
 
-  try {
-    // ─── Task Loop with Verification ────────────────────────────────────────
-
-    // Seed `done` with sub-issues already closed before this run, so that
-    // dependency checks like `blockedBy.every(b => done.has(b))` correctly
-    // recognise pre-completed blockers as satisfied.
-    const done = new Set<number>();
-    try {
-      const closedRaw = gh(
-        `api repos/${config.repo}/issues/${prdNumber}/sub_issues --jq "[.[] | select(.state == \\"closed\\") | .number]"`
-      );
-      for (const n of JSON.parse(closedRaw || "[]")) done.add(n);
-    } catch {
-      // if fetch fails, proceed with empty set — worst case tasks stay blocked
-    }
-
-    const completedTasks: SubIssue[] = [];
-    let task: SubIssue | undefined;
-
-    while ((task = nextUnblocked(allIssues, done))) {
-      const taskStart = Date.now();
-      log(`[task #${task.number}] implementing...`);
-
-      const implPrompt = buildImplementerPrompt(task, designPath);
-      const implResult = await sandbox.exec(
-        `kiro-cli chat --no-interactive --agent implementer "${escapeShell(implPrompt)}"`,
-        { cwd: "/home/agent/workspace", onLine: liveStream(`#${task.number} impl`) }
-      );
-      writeFileSync(
-        resolve(logsDir, `${task.number}-implementer.log`),
-        implResult.stdout + "\n" + implResult.stderr
-      );
-
-      // Post-implementer checks
-      log(`[task #${task.number}] verifying...`);
-      const postImpl = await runChecks(sandbox, sandbox.worktreePath);
-
-      let reviewerContext: string;
-      if (postImpl.passed) {
-        reviewerContext = "Implementer checks passed. Review for code quality.";
-      } else {
-        reviewerContext = `Implementer checks FAILED:\n${postImpl.output.slice(-2000)}`;
-      }
-
-      // Review loop — reviewer runs, then checks. If checks fail, resume the
-      // same reviewer session with error context for another attempt (max retries).
-      let reviewContext = reviewerContext;
-      let reviewPassed = false;
-
-      for (let attempt = 1; attempt <= config.maxReviewRetries; attempt++) {
-        const isRetry = attempt > 1;
-        log(`[task #${task.number}] reviewing (attempt ${attempt}/${config.maxReviewRetries})...`);
-
-        let reviewCmd: string;
-        if (!isRetry) {
-          const reviewPrompt = buildReviewerPrompt(task, reviewContext, designPath);
-          reviewCmd = `kiro-cli chat --no-interactive --agent reviewer "${escapeShell(reviewPrompt)}"`;
-        } else {
-          // Resume the same reviewer session with failure context
-          const retryPrompt = `The checks failed after your last review. Fix the issues below and try again.\n\n${reviewContext}`;
-          reviewCmd = `kiro-cli chat --no-interactive --resume "${escapeShell(retryPrompt)}"`;
-        }
-
-        const revResult = await sandbox.exec(reviewCmd, {
-          cwd: "/home/agent/workspace",
-          onLine: liveStream(`#${task.number} review`),
-        });
-        writeFileSync(
-          resolve(logsDir, `${task.number}-reviewer-${attempt}.log`),
-          revResult.stdout + "\n" + revResult.stderr
-        );
-
-        log(`[task #${task.number}] post-review checks (attempt ${attempt})...`);
-        const checks = await runChecks(sandbox, sandbox.worktreePath);
-
-        if (checks.passed) {
-          reviewPassed = true;
-          break;
-        }
-
-        if (attempt < config.maxReviewRetries) {
-          log(`[task #${task.number}] checks failed, retrying reviewer...`);
-          reviewContext = checks.output.slice(-3000);
-        } else {
-          const tail = checks.output.split("\n").slice(-30).join("\n");
-          throw new Error(
-            `[task #${task.number}] FAILED after ${config.maxReviewRetries} review attempts:\n${tail}`
-          );
-        }
-      }
-
-      done.add(task.number);
-      completedTasks.push(task);
-      gh(`issue close ${task.number} --repo ${config.repo}`);
-      checkpointPR(branch, prdNumber, task);
-      log(`[task #${task.number}] ✓ closed & pushed (${elapsed(taskStart)})`);
-    }
-
-    if (completedTasks.length === 0) {
-      throw new Error("No tasks could be unblocked. Check dependency graph.");
-    }
-
-    // ─── Completion ──────────────────────────────────────────────────────────
-
-    log(`✓ ${completedTasks.length} tasks completed. PR pushed incrementally.`);
-  } finally {
-    // Host teardown always runs — on success, task failure, or check failure.
-    if (config.hostTeardown) {
-      log(`Host teardown: ${config.hostTeardown}`);
-      try {
-        execSync(config.hostTeardown, { cwd: sandbox.worktreePath, stdio: "ignore" });
-      } catch {
-        // best-effort teardown; don't mask the original error
-      }
-    }
+  if (completedTasks.length === 0) {
+    throw new Error("No tasks could be unblocked. Check dependency graph.");
   }
+
+  log(`✓ ${completedTasks.length} tasks completed.`);
+
+  // Soft e2e nudge — one comment per PR, not a merge gate, not nightly.
+  postE2eNudge(branch, prdNumber);
 }
 
-// ─── Verification Logic ──────────────────────────────────────────────────────
+// ─── Verification ────────────────────────────────────────────────────────────
 
 interface CheckResult {
   passed: boolean;
   output: string;
 }
 
-// Run a command on the HOST (not the sandbox), capturing output. Used for
-// steps that need the host Docker daemon (e.g. Supabase) against the
-// bind-mounted worktree. Returns exit code rather than throwing.
-function execHost(cmd: string, cwd: string): { exitCode: number; output: string } {
-  try {
-    const out = execSync(cmd, { cwd, encoding: "utf-8" });
-    if (verbose) process.stdout.write(out);
-    return { exitCode: 0, output: out };
-  } catch (err) {
-    const e = err as { status?: number; stdout?: string; stderr?: string };
-    const output = `${e.stdout ?? ""}\n${e.stderr ?? ""}`;
-    if (verbose) process.stdout.write(output);
-    return { exitCode: e.status ?? 1, output };
-  }
-}
-
-async function runChecks(
-  sandbox: {
-    exec: (cmd: string, opts?: { cwd?: string; onLine?: (line: string) => void }) => Promise<{ stdout: string; stderr: string; exitCode: number }>;
-  },
-  hostCwd: string
-): Promise<CheckResult> {
-  const testResult = await sandbox.exec(config.test, { cwd: "/home/agent/workspace", onLine: liveStream("test") });
-  if (testResult.exitCode !== 0) {
-    return { passed: false, output: `TEST FAILED:\n${testResult.stdout}\n${testResult.stderr}` };
-  }
-
-  const typeResult = await sandbox.exec(config.typeCheck, { cwd: "/home/agent/workspace", onLine: liveStream("tsc") });
+async function runChecks(sandbox: {
+  exec: (cmd: string, opts?: { cwd?: string; onLine?: (line: string) => void }) => Promise<{ stdout: string; stderr: string; exitCode: number }>;
+}): Promise<CheckResult> {
+  // Fastest-fail ordering: typecheck (cheapest gate) → testVite (no DB
+  // needed, so a failure here skips paying for an expensive DB reset) →
+  // resetDb (bail hard on non-zero — DB/e2e checks would run against stale
+  // schema otherwise) → testDb.
+  const typeResult = await sandbox.exec(config.typeCheck, {
+    cwd: "/home/agent/workspace",
+    onLine: liveStream("check"),
+  });
   if (typeResult.exitCode !== 0) {
     return { passed: false, output: `TYPE-CHECK FAILED:\n${typeResult.stdout}\n${typeResult.stderr}` };
   }
 
-  // Host-side tests (e.g. pgTAP via `supabase test db`) — run on the host
-  // against the bind-mounted worktree. Skipped when hostTest is "".
-  if (config.hostTest) {
-    const hostResult = execHost(config.hostTest, hostCwd);
-    if (hostResult.exitCode !== 0) {
-      return { passed: false, output: `HOST TEST FAILED (${config.hostTest}):\n${hostResult.output}` };
-    }
+  const viteResult = await sandbox.exec(config.testVite, {
+    cwd: "/home/agent/workspace",
+    onLine: liveStream("test:vite"),
+  });
+  if (viteResult.exitCode !== 0) {
+    return { passed: false, output: `VITEST FAILED:\n${viteResult.stdout}\n${viteResult.stderr}` };
+  }
+
+  const resetResult = await sandbox.exec(config.resetDb, {
+    cwd: "/home/agent/workspace",
+    onLine: liveStream("db:reset"),
+  });
+  if (resetResult.exitCode !== 0) {
+    return { passed: false, output: `DB RESET FAILED:\n${resetResult.stdout}\n${resetResult.stderr}` };
+  }
+
+  const dbResult = await sandbox.exec(config.testDb, {
+    cwd: "/home/agent/workspace",
+    onLine: liveStream("test:db"),
+  });
+  if (dbResult.exitCode !== 0) {
+    return { passed: false, output: `DB TEST FAILED:\n${dbResult.stdout}\n${dbResult.stderr}` };
   }
 
   return { passed: true, output: "All checks passed." };
@@ -451,13 +469,11 @@ function checkpointPR(branch: string, prd: number, closedIssue: SubIssue) {
   const entry = `- Closes #${closedIssue.number} — ${closedIssue.title}`;
 
   if (prNumber) {
-    // Append to existing PR body
     const existingBody = gh(`pr view ${prNumber} --json body --jq ".body"`);
     const updatedBody = existingBody + "\n" + entry;
     ghStdin(`pr edit ${prNumber} --body-file -`, updatedBody);
     log(`PR #${prNumber} updated with #${closedIssue.number}.`);
   } else {
-    // Create draft PR — title set once
     const body = [
       "## Summary",
       "",
@@ -478,12 +494,41 @@ function checkpointPR(branch: string, prd: number, closedIssue: SubIssue) {
   }
 }
 
+// ─── E2E PR Nudge ────────────────────────────────────────────────────────────
+
+/**
+ * Soft, one-time nudge posted after the task loop completes: reminds a human
+ * to run the Playwright smoke layer before merge. NOT a merge gate, NOT
+ * nightly — e2e never runs in the agent loop (#58/#59). Keyed to the PR
+ * number so it's posted at most once per PR per invocation.
+ */
+function postE2eNudge(branch: string, prd: number) {
+  const prNumber = gh(`pr list --head ${branch} --json number --jq ".[0].number"`);
+  if (!prNumber) {
+    log("No PR found for e2e nudge — skipping.");
+    return;
+  }
+  const comment = `Agent loop complete for PRD #${prd}. Please run \`${config.testE2e}\` locally before merging (human smoke layer — not run in the agent loop).`;
+  gh(`pr comment ${prNumber} --body ${JSON.stringify(comment)}`);
+  log(`Posted e2e nudge on PR #${prNumber}.`);
+}
+
 // ─── Prompt Builders ─────────────────────────────────────────────────────────
 
 function buildImplementerPrompt(task: SubIssue, designPath?: string): string {
   let prompt = `Implement the following task.\n\n`;
   prompt += `## Task #${task.number}: ${task.title}\n\n${task.body}\n\n`;
-  prompt += `## Check commands\n- Test: ${config.test}\n- Type-check: ${config.typeCheck}\n`;
+  prompt += `## Environment\n`;
+  prompt += `You are running inside a sandbox with full access to the Supabase database and services.\n`;
+  prompt += `Do NOT check for Docker or Supabase availability — they are pre-configured.\n`;
+  prompt += `DATABASE_URL is set in the environment — use it directly (no need to export).\n\n`;
+  prompt += `## Running tests\n`;
+  prompt += `The orchestrator runs the FULL test suite (unit + DB + type-check) as a guard after you finish. Do NOT run the whole suite yourself — it is slow and redundant. Run ONLY the tests covering the files you changed (substitute <file> with a real path):\n`;
+  prompt += `- Unit/component: ${scopedTests.vite}   e.g. ${config.testVite} src/routes/checks/page.svelte.spec.ts\n`;
+  prompt += `- Database: ${scopedTests.db.replace("<file>", "<your-test>.sql")}\n`;
+  prompt += `- Type-check (whole-project, run only if you changed types/interfaces): ${config.typeCheck}\n`;
+  prompt += `\nYou may author Playwright e2e specs under e2e/ when a flow genuinely needs a real browser + stack (auth redirect, Storage, RBAC surface) and jsdom/SSR/pgTAP cannot prove it — but do NOT run \`${config.testE2e}\` yourself; a human runs the smoke layer separately.\n`;
+  prompt += `\nIMPORTANT: The database tests run against a live shared database and do NOT auto-apply migrations. If you add or edit any migration, run the DB reset command (${config.resetDb}) BEFORE running the database tests, otherwise your new schema/policies/functions will be missing and tests will fail misleadingly.\n`;
   if (designPath) prompt += `\n## Design context\nRead ${designPath} for architectural decisions.\n`;
   return prompt;
 }
@@ -492,12 +537,17 @@ function buildReviewerPrompt(task: SubIssue, context: string, designPath?: strin
   let prompt = `Review the implementation of the following task.\n\n`;
   prompt += `## Task #${task.number}: ${task.title}\n\n${task.body}\n\n`;
   prompt += `## Context\n${context}\n\n`;
-  prompt += `## Check commands\n- Test: ${config.test}\n- Type-check: ${config.typeCheck}\n`;
-  prompt += `\n## Constraints\n`;
-  prompt += `You CANNOT run E2E or host-side tests (database tests, Playwright E2E). `;
-  prompt += `Do not speculate about E2E failures or debug timing issues you cannot observe. `;
-  prompt += `Make your best fix, verify with unit tests and type-check only, then finish. `;
-  prompt += `The orchestrator will run E2E tests on the host and feed failures back to you in the next retry if they fail.\n`;
+  prompt += `## Environment\n`;
+  prompt += `You are running inside a sandbox with full access to the Supabase database and services.\n`;
+  prompt += `Do NOT check for Docker or Supabase availability — they are pre-configured.\n`;
+  prompt += `DATABASE_URL is set in the environment — use it directly (no need to export).\n\n`;
+  prompt += `## Running tests\n`;
+  prompt += `The orchestrator runs the FULL test suite (unit + DB + type-check) as a guard after you finish. Do NOT run the whole suite yourself — it is slow and redundant. After any fixes, run ONLY the tests covering the files you touched (substitute <file> with a real path):\n`;
+  prompt += `- Unit/component: ${scopedTests.vite}   e.g. ${config.testVite} src/routes/checks/page.svelte.spec.ts\n`;
+  prompt += `- Database: ${scopedTests.db.replace("<file>", "<your-test>.sql")}\n`;
+  prompt += `- Type-check (whole-project, run only if you changed types/interfaces): ${config.typeCheck}\n`;
+  prompt += `\nDo NOT run \`${config.testE2e}\` — a human runs the e2e smoke layer separately.\n`;
+  prompt += `\nIMPORTANT: The database tests run against a live shared database and do NOT auto-apply migrations. If a fix adds or edits any migration, run the DB reset command (${config.resetDb}) BEFORE running the database tests.\n`;
   if (designPath) prompt += `\n## Design context\nRead ${designPath} for architectural decisions.\n`;
   return prompt;
 }

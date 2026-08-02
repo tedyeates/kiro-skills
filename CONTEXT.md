@@ -36,6 +36,17 @@ _Avoid_: stop, pause, abort
 **Feature Branch**: Long-lived branch (`feature/<prd-number>-<slug>`) that accumulates direct commits from all tasks. One per PRD. Agents commit directly to it.
 _Avoid_: integration branch, develop branch, task branch
 
+### Fix Mode
+
+**Fix Mode**: A mode of the Sandcastle Runner (`--fix`) that processes standalone, ready, dependency-free tickets across a whole repo — one branch and PR per ticket — instead of a PRD's sub-issues. Implementer-only, skip-and-continue.
+_Avoid_: bug loop, small-task runner, fix runner
+
+**Eligible Fix**: A ticket the Fix Mode will process: `open` AND `ready-for-agent` AND (`bug` OR `enhancement`) AND zero blocking dependencies. Computed by the pure `selectEligibleFixes` function.
+_Avoid_: ready ticket, candidate
+
+**In-place Branch Switching**: Cutting each ticket's branch from the launch commit (`git switch -c` from `baseSha`) inside a single, reused worktree — so dependencies install once and persist across tickets. Never checks out the base branch (it is checked out in the main repo).
+_Avoid_: per-task worktree, branch reset
+
 ### Infrastructure
 
 **Runner Image**: Shared Docker image (`kiro-runner`) containing Node+pnpm, Python3+pip, git, kiro-cli. Built once, reused across projects.

@@ -25,6 +25,12 @@ Rules for seam selection:
 - **Fewer seams across the codebase = better** — the ideal number is one per module
 - One adapter means a hypothetical seam; two adapters means a real one — don't introduce a seam unless something actually varies across it
 
+After identifying the unit/integration seams above, explicitly consider the **end-to-end seam** — a test that exercises the full flow (real browser → real backend → real DB) to verify the components are actually wired together. Unit and integration seams mock their boundaries, so they miss wiring bugs where correctly-built pieces aren't connected.
+
+- Explicitly ask: "Is there an E2E test that verifies the full flow is wired together?"
+- If the project has existing e2e infrastructure (Playwright/Cypress config, seeded test users, CI e2e stage), **default to recommending an e2e seam** for this feature
+- If no e2e infrastructure exists, note the gap but don't mandate standing one up — surface it as an option
+
 Present the proposed seams to the user and get confirmation before proceeding.
 
 ### 3. Identify modules
@@ -181,6 +187,9 @@ The seams at which this feature will be tested, with rationale:
 | Seam | Existing/New | Modules it covers | How tests use it |
 |------|-------------|-------------------|-----------------|
 | {interface name} | Existing | {modules} | {test strategy} |
+| {e2e flow, if applicable} | Existing/New | {full path of modules wired together} | {real browser → backend → DB} |
+
+Include an e2e row when the project has e2e infrastructure or the feature spans multiple modules that must be verified as wired together. Omit it only if there is genuinely nothing to verify end-to-end.
 
 ## Implementation Decisions
 
